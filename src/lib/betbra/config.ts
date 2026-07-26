@@ -1,6 +1,9 @@
 export const BETBRA = {
   origin: "https://betbra.bet.br",
+  /** Origin/Referer das chamadas à API do exchange. */
   mexchangeWeb: "https://mexchange.betbra.bet.br",
+  /** Link “Abrir” no front — Bolsa de Aposta (mesmo event/market id). */
+  openExchangeWeb: "https://bolsadeaposta.bet.br/b",
   clientApi: "https://betbra.bet.br/client/api",
   mexchangeApi: "https://mexchange-api.betbra.bet.br/api",
   sportIds: {

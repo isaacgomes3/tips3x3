@@ -951,7 +951,7 @@ function EventDetail({
             size="md"
           />
           <a className="btn-primary" href={selected.mexchangeUrl} target="_blank" rel="noreferrer">
-            Abrir no Mexchange
+            Abrir na Bolsa
           </a>
           <span className={`status-chip status-${tradeStatus(activeTrade).toLowerCase()}`}>
             {tradeStatus(activeTrade)}

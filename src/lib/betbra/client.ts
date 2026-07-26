@@ -147,8 +147,9 @@ export async function getEventsRadar(): Promise<RadarMap[]> {
 }
 
 export function mexchangeEventUrl(eventId: string, marketId?: string) {
+  const base = BETBRA.openExchangeWeb;
   if (marketId) {
-    return `${BETBRA.mexchangeWeb}/exchange/sport/soccer/event/${eventId}/market/${marketId}`;
+    return `${base}/exchange/sport/soccer/event/${eventId}/market/${marketId}`;
   }
-  return `${BETBRA.mexchangeWeb}/exchange/sport/soccer/event/${eventId}`;
+  return `${base}/exchange/sport/soccer/event/${eventId}`;
 }
