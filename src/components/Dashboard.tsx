@@ -215,14 +215,6 @@ function formatKickoff(iso: string) {
   }
 }
 
-function formatMoney(n: number) {
-  return n.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    maximumFractionDigits: 0,
-  });
-}
-
 function severityClass(severity: string) {
   switch (severity) {
     case "entry":
@@ -379,9 +371,18 @@ export function Dashboard() {
       return hay.includes(q);
     });
 
-    // Favoritos no topo (ordem de favoritar), depois o restante
+    // ENTRAR no topo, depois favoritos, depois o restante
     const favRank = new Map(favorites.map((f, i) => [f.eventId, i]));
+    const isEntry = (row: OpportunityRow) => {
+      const plan =
+        liveMap.get(row.analysis.eventId)?.tradePlan ?? row.analysis.tradePlan;
+      return Boolean(plan?.entryReady);
+    };
     return [...filtered].sort((a, b) => {
+      const ae = isEntry(a) ? 0 : 1;
+      const be = isEntry(b) ? 0 : 1;
+      if (ae !== be) return ae - be;
+
       const ai = favRank.has(a.analysis.eventId)
         ? (favRank.get(a.analysis.eventId) as number)
         : Number.POSITIVE_INFINITY;
@@ -398,6 +399,7 @@ export function Dashboard() {
     onlyIdeal,
     onlyFavorites,
     liveAsOpportunities,
+    liveMap,
     favoriteIds,
     favorites,
   ]);
@@ -415,10 +417,6 @@ export function Dashboard() {
   const liveForSelected = selectedId ? liveMap.get(selectedId) : undefined;
   const activeTrade = liveForSelected?.tradePlan ?? selected?.analysis.tradePlan;
   const entryAlerts = (live?.alerts ?? []).filter((a) => a.severity === "entry").length;
-  const totalLiquidity = useMemo(
-    () => games.reduce((sum, g) => sum + (g.analysis.liquidity || g.analysis.volume3x3 || 0), 0),
-    [games],
-  );
 
   const openEvent = (eventId: string) => {
     setSelectedId(eventId);
@@ -578,31 +576,6 @@ export function Dashboard() {
             </button>
           </div>
         </header>
-
-        <section className="stat-row" aria-label="Resumo">
-          <article className="stat-card">
-            <span>Jogos disponíveis</span>
-            <strong>{games.length}</strong>
-            <em>Ao vivo e futuros</em>
-          </article>
-          <article className="stat-card">
-            <span>Liquidez total</span>
-            <strong>{formatMoney(totalLiquidity)}</strong>
-            <em>Volume matched 3-3</em>
-          </article>
-          <article className="stat-card">
-            <span>Entradas prontas</span>
-            <strong>{live?.entries ?? 0}</strong>
-            <em>Confirmação live</em>
-          </article>
-          <article className="stat-card">
-            <span>Janela preferida</span>
-            <strong>
-              {opps?.window.min ?? 20}–{opps?.window.preferredMax ?? 32}
-            </strong>
-            <em>Lay baixo · ~1% rápido</em>
-          </article>
-        </section>
 
         {error && <div className="banner-error">{error}</div>}
 

@@ -77,7 +77,7 @@ export function MatchIntelCard({
           </p>
         </div>
         <a href={intel.sofascoreUrl} target="_blank" rel="noreferrer" className="btn-secondary">
-          Abrir Sofascore
+          Abrir {intel.source === "fotmob" ? "FotMob" : "Sofascore"}
         </a>
       </div>
 

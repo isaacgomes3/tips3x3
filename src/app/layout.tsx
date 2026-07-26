@@ -19,6 +19,12 @@ export const metadata: Metadata = {
     "Painel de dados, análise pré-live e alertas de entrada para lay no placar exato 3-3 no Mexchange BetBra.",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{

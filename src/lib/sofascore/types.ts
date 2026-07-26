@@ -15,7 +15,7 @@ export type SofaEventLite = {
 };
 
 export type MatchIntel = {
-  source: "sofascore";
+  source: "sofascore" | "fotmob";
   sofaEventId: number;
   matchName: string;
   competition?: string;
