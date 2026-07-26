@@ -117,25 +117,21 @@ export function confirmLivePattern(
   }
 
   const favorite = resolveInitialFavorite(analysis.matchOdds);
-  let favoriteScoreOk = false;
-  if (!favorite.qualifies || !favorite.side) {
-    reasons.push(favorite.detail);
-  } else {
-    const gate = isEntryScoreAllowed(
-      live.homeScore,
-      live.awayScore,
-      favorite.side,
-    );
-    favoriteScoreOk = gate.allowed;
+  let hardScoreOk = true;
+  if (live.scoreLabel) {
+    const gate = isEntryScoreAllowed(live.homeScore, live.awayScore);
+    hardScoreOk = gate.allowed;
     if (!gate.allowed) {
       alerts.push({
-        id: `${analysis.eventId}-watch-fav-score`,
+        id: `${analysis.eventId}-watch-hard-score`,
         severity: "watch",
-        title: "Placar vs favorito",
+        title: "Placar excluído",
         message: `${analysis.eventName}: ${gate.reason}`,
         at,
       });
       reasons.push(gate.reason);
+    } else if (favorite.detail) {
+      reasons.push(favorite.detail);
     }
   }
 
@@ -144,7 +140,7 @@ export function confirmLivePattern(
   }
 
   if (pattern.requireCompetitive && live.goalDiff >= 3) {
-    // 3-0 / 0-3 continua elegível para indicação (regra de placar do favorito)
+    // 3-0 / 0-3 continua elegível (exclusão dura só 2-2 / 3-2 / 2-3 / 3-3)
     if (live.scoreLabel !== "3-0" && live.scoreLabel !== "0-3") {
       alerts.push({
         id: `${analysis.eventId}-abort-diff`,
@@ -168,7 +164,7 @@ export function confirmLivePattern(
   const preOk = analysis.watchlist && analysis.idealOdds;
 
   const confirmed = Boolean(
-    preOk && scorePathOk && goalsOk && minuteOk && favoriteScoreOk,
+    preOk && scorePathOk && goalsOk && minuteOk && hardScoreOk,
   );
 
   if (confirmed) {

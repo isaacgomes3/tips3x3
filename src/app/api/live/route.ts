@@ -9,6 +9,7 @@ import {
   mexchangeEventUrl,
 } from "@/lib/betbra/client";
 import { getOddsHistory } from "@/lib/betbra/odds-history";
+import { analyzeTeamForm } from "@/lib/fotmob/form";
 
 export const dynamic = "force-dynamic";
 
@@ -44,11 +45,17 @@ export async function GET(request: Request) {
                   minutesBefore: 60,
                   limit: 200,
                 });
+                const teamForm = await analyzeTeamForm({
+                  home: analysis.home,
+                  away: analysis.away,
+                  start: analysis.start,
+                }).catch(() => null);
                 tradePlan = buildTradePlan({
                   layOdds: analysis.layOdds ?? history.data.at(-1)?.odd ?? null,
                   historyPoints: history.data,
                   inplay: ip,
                   matchOdds: analysis.matchOdds,
+                  teamForm,
                 });
               } catch {
                 // mantém tradePlan base

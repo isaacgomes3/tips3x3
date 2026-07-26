@@ -7,8 +7,9 @@ import { MatchIntelCard } from "@/components/MatchIntelCard";
 import { MomentAnalysisCard } from "@/components/MomentAnalysisCard";
 import { OddsQuoteButtons } from "@/components/OddsQuoteButtons";
 import { OddsVolumeChart } from "@/components/OddsVolumeChart";
+import { LiveAlertToasts } from "@/components/LiveAlertToasts";
 import { useFavorites } from "@/hooks/useFavorites";
-import { useGoalNotifications } from "@/hooks/useGoalNotifications";
+import { useLiveAlerts } from "@/hooks/useLiveAlerts";
 
 type TradePlan = {
   layOdds: number | null;
@@ -63,6 +64,11 @@ type TradePlan = {
     liability: number;
     backStake: number | null;
     profit: number | null;
+  };
+  teamForm?: null | {
+    confirmsHighScoring: boolean;
+    projectedTotalGoals: number | null;
+    detail: string;
   };
 };
 
@@ -244,7 +250,10 @@ function tradeStatus(plan?: TradePlan | null) {
     if (plan.correction.entryBias === "favor") return "BOUNCE";
     return "ZEBRA↓";
   }
-  if (plan.risk?.tier === "alto") return "RISCO";
+  if (plan.risk?.tier === "alto") {
+    if (plan.teamForm?.confirmsHighScoring) return "FORMA";
+    return "RISCO";
+  }
   if (plan.correction?.entryBias === "favor") return "CORRIGINDO";
   if (plan.fluidity?.lateralized) return "LATERAL";
   if (plan.inEntryWindow && plan.risk?.favorsQuickCorrection) return "FAVORAVEL";
@@ -267,7 +276,7 @@ export function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { favorites, favoriteIds, toggleFavorite, isFavorite } = useFavorites();
 
-  useGoalNotifications(favorites, live?.rows);
+  const { toasts, dismiss } = useLiveAlerts(favorites, live?.rows);
   const [detailOpen, setDetailOpen] = useState<Record<string, boolean>>({
     trade: true,
     moment: true,
@@ -453,6 +462,7 @@ export function Dashboard() {
 
   return (
     <div className="app-frame">
+      <LiveAlertToasts toasts={toasts} onDismiss={dismiss} />
       <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`}>
         <div className="sidebar-brand">
           <img

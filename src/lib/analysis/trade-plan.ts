@@ -1,6 +1,7 @@
 import type { OddsHistoryPoint } from "../betbra/odds-history";
 import type { InplayEvent } from "../betbra/types";
 import { getLayOddsWindow, getTradeConfig } from "../betbra/config";
+import type { TeamFormReport } from "../fotmob/form";
 import {
   analyzeCorrection,
   type CorrectionAnalysis,
@@ -45,7 +46,7 @@ export interface TradePlan {
   oscillation: OscillationSignal | null;
   fluidity: FluidityReport | null;
   correction: CorrectionAnalysis | null;
-  /** Favorito inicial (match odds ≤ 1.80) + elegibilidade do placar live */
+  /** Favorito inicial (informativo) + elegibilidade do placar live */
   scoreGate: {
     favoriteOdd: number | null;
     favoriteSide: "home" | "away" | null;
@@ -54,6 +55,8 @@ export interface TradePlan {
     scoreLabel: string | null;
     detail: string;
   };
+  /** Histórico de gols / casa-fora — libera lay alta (RISCO) quando confirma. */
+  teamForm: TeamFormReport | null;
   entryReady: boolean;
   summary: string;
 }
@@ -224,6 +227,7 @@ export function buildTradePlan(opts: {
     home?: { back?: number | null };
     away?: { back?: number | null };
   };
+  teamForm?: TeamFormReport | null;
 }): TradePlan {
   const window = getLayOddsWindow();
   const trade = getTradeConfig();
@@ -304,26 +308,24 @@ export function buildTradePlan(opts: {
 
   const favorite = resolveInitialFavorite(opts.matchOdds);
   const liveScore = scoreFromInplay(opts.inplay);
-  let scoreAllowed = false;
+  let scoreAllowed = true;
   let scoreDetail = favorite.detail;
   let scoreLabel: string | null = null;
 
-  if (!favorite.qualifies || !favorite.side) {
+  if (!liveScore) {
     scoreAllowed = false;
-    scoreDetail = favorite.detail;
-  } else if (!liveScore) {
-    scoreAllowed = false;
-    scoreDetail = `${favorite.detail} Aguardando placar live.`;
+    scoreDetail = "Aguardando placar live.";
   } else {
     scoreLabel = `${liveScore.home}-${liveScore.away}`;
-    const gate = isEntryScoreAllowed(
-      liveScore.home,
-      liveScore.away,
-      favorite.side,
-    );
+    const gate = isEntryScoreAllowed(liveScore.home, liveScore.away);
     scoreAllowed = gate.allowed;
-    scoreDetail = `${favorite.detail} ${gate.reason}`;
+    scoreDetail = gate.reason;
   }
+
+  const teamForm = opts.teamForm ?? null;
+  const formConfirms = Boolean(teamForm?.confirmsHighScoring);
+  const riskOk =
+    risk.tier !== "alto" || crashEarlyBounce || formConfirms;
 
   const scoreGate = {
     favoriteOdd: favorite.odd,
@@ -341,8 +343,7 @@ export function buildTradePlan(opts: {
       !(fluidity?.lateralized ?? true) &&
       favorableCorrection &&
       !avoidCorrection &&
-      (risk.tier !== "alto" || crashEarlyBounce) &&
-      scoreGate.favoriteOk &&
+      riskOk &&
       scoreGate.scoreAllowed,
   );
 
@@ -352,8 +353,6 @@ export function buildTradePlan(opts: {
   let summary: string;
   if (layOdds == null) {
     summary = "Sem odd lay 3-3 de referência.";
-  } else if (!scoreGate.favoriteOk) {
-    summary = scoreGate.detail;
   } else if (liveScore && !scoreGate.scoreAllowed) {
     summary = `Placar ${scoreGate.scoreLabel}: ${scoreGate.detail}`;
   } else if (crashSetup && crash) {
@@ -372,14 +371,18 @@ export function buildTradePlan(opts: {
     }
   } else if (!inEntryWindow) {
     summary = `Lay ${layOdds.toFixed(0)} fora da janela ${window.min}–${window.max}. Preferir ${window.min}–${window.preferredMax} (correção ${pctLabel} mais rápida).`;
-  } else if (risk.tier === "alto") {
-    summary = `Lay ${layOdds.toFixed(0)} na janela, mas risco alto: precisa ~${risk.requiredMovePct?.toFixed(0)}% na odd (back ~${backLabel}). Esperar lay cair para ${window.min}–${window.preferredMax}.`;
+  } else if (risk.tier === "alto" && !riskOk) {
+    summary = `Lay ${layOdds.toFixed(0)} alta (risco): ${teamForm?.detail ?? "sem histórico de gols confirmando abertura do jogo."} Preferir ≤${window.preferredMax} ou forma ofensiva.`;
+  } else if (risk.tier === "alto" && formConfirms) {
+    summary = entryReady
+      ? `ENTRADA: lay ~${layOdds.toFixed(0)} (risco mitigado pela forma). ${teamForm?.detail ?? ""}`
+      : `Lay ${layOdds.toFixed(0)} alta, mas forma sugere gols. ${teamForm?.detail ?? ""} Aguardando fluidez/correção.`;
   } else if (fluidity?.lateralized) {
     summary = `Lay ${layOdds.toFixed(0)} ok para ${pctLabel}, mas mercado lateral — sem fluidez. Não entrar só pela odd.`;
   } else if (correction && !favorableCorrection) {
     summary = `Lay ${layOdds.toFixed(0)} favorece ${pctLabel} (back ~${backLabel}), mas ainda sem correção. ${correction.summary}`;
   } else if (entryReady) {
-    summary = `ENTRADA: lay ~${layOdds.toFixed(0)} em correção → back ~${backLabel} (~${pctLabel} liability, risco ${risk.tier}). ${scoreGate.detail}`;
+    summary = `ENTRADA: lay ~${layOdds.toFixed(0)} em correção → back ~${backLabel} (~${pctLabel} liability, risco ${risk.tier}).`;
   } else if (risk.favorsQuickCorrection) {
     summary = `Lay ${layOdds.toFixed(0)} favorece correção rápida (~${pctLabel}, back ~${backLabel}). Espere movimento pós-choque — não só a odd.`;
   } else {
@@ -403,6 +406,7 @@ export function buildTradePlan(opts: {
     fluidity,
     correction,
     scoreGate,
+    teamForm,
     entryReady,
     summary,
   };
