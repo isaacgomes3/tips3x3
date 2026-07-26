@@ -145,7 +145,14 @@ export async function GET(request: Request) {
     }
 
     const alerts = rows
-      .flatMap((r) => r.alerts)
+      .flatMap((r) =>
+        r.alerts.map((a) => ({
+          ...a,
+          eventId: r.analysis.eventId,
+          eventName: r.analysis.eventName,
+          mexchangeUrl: r.mexchangeUrl,
+        })),
+      )
       .sort((a, b) => {
         const rank = { entry: 0, abort: 1, watch: 2, info: 3 } as const;
         return rank[a.severity] - rank[b.severity];

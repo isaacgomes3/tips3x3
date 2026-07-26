@@ -1,5 +1,9 @@
 import type { InplayEvent } from "../betbra/types";
 import type { PreLiveAnalysis } from "./prelive";
+import {
+  isEntryScoreAllowed,
+  resolveInitialFavorite,
+} from "./score-entry";
 
 export type AlertSeverity = "info" | "watch" | "entry" | "abort";
 
@@ -112,20 +116,46 @@ export function confirmLivePattern(
     reasons.push("Placar fora da lista allowScores");
   }
 
+  const favorite = resolveInitialFavorite(analysis.matchOdds);
+  let favoriteScoreOk = false;
+  if (!favorite.qualifies || !favorite.side) {
+    reasons.push(favorite.detail);
+  } else {
+    const gate = isEntryScoreAllowed(
+      live.homeScore,
+      live.awayScore,
+      favorite.side,
+    );
+    favoriteScoreOk = gate.allowed;
+    if (!gate.allowed) {
+      alerts.push({
+        id: `${analysis.eventId}-watch-fav-score`,
+        severity: "watch",
+        title: "Placar vs favorito",
+        message: `${analysis.eventName}: ${gate.reason}`,
+        at,
+      });
+      reasons.push(gate.reason);
+    }
+  }
+
   if (live.totalGoals > pattern.maxGoalsBeforeEntry) {
     reasons.push("Gols totais acima do máximo pré-definido");
   }
 
   if (pattern.requireCompetitive && live.goalDiff >= 3) {
-    alerts.push({
-      id: `${analysis.eventId}-abort-diff`,
-      severity: "abort",
-      title: "Jogo desequilibrado",
-      message: `${analysis.eventName}: diferença de ${live.goalDiff} gols quebra o padrão competitivo.`,
-      at,
-    });
-    reasons.push("Diferença de gols alta");
-    return { analysis, live, confirmed: false, alerts, reasons };
+    // 3-0 / 0-3 continua elegível para indicação (regra de placar do favorito)
+    if (live.scoreLabel !== "3-0" && live.scoreLabel !== "0-3") {
+      alerts.push({
+        id: `${analysis.eventId}-abort-diff`,
+        severity: "abort",
+        title: "Jogo desequilibrado",
+        message: `${analysis.eventName}: diferença de ${live.goalDiff} gols quebra o padrão competitivo.`,
+        at,
+      });
+      reasons.push("Diferença de gols alta");
+      return { analysis, live, confirmed: false, alerts, reasons };
+    }
   }
 
   const minuteOk =
@@ -137,7 +167,9 @@ export function confirmLivePattern(
   const goalsOk = live.totalGoals <= pattern.maxGoalsBeforeEntry;
   const preOk = analysis.watchlist && analysis.idealOdds;
 
-  const confirmed = Boolean(preOk && scorePathOk && goalsOk && minuteOk);
+  const confirmed = Boolean(
+    preOk && scorePathOk && goalsOk && minuteOk && favoriteScoreOk,
+  );
 
   if (confirmed) {
     alerts.push({

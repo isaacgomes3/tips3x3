@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CollapsePanel } from "@/components/CollapsePanel";
 import { FavoriteStarButton } from "@/components/FavoriteStarButton";
-import { MatchCardPressure } from "@/components/MatchCardPressure";
 import { MatchIntelCard } from "@/components/MatchIntelCard";
 import { MomentAnalysisCard } from "@/components/MomentAnalysisCard";
 import { OddsQuoteButtons } from "@/components/OddsQuoteButtons";
@@ -128,6 +127,9 @@ type LivePayload = {
     title: string;
     message: string;
     at: string;
+    eventId?: string;
+    eventName?: string;
+    mexchangeUrl?: string;
   }>;
   rows: Array<{
     confirmed: boolean;
@@ -213,6 +215,13 @@ function formatKickoff(iso: string) {
   } catch {
     return iso;
   }
+}
+
+function splitScoreLabel(label?: string | null): [string, string] {
+  if (!label) return ["—", "—"];
+  const m = label.match(/^(\d+)\s*[-–:]\s*(\d+)$/);
+  if (!m) return ["—", "—"];
+  return [m[1], m[2]];
 }
 
 function severityClass(severity: string) {
@@ -549,20 +558,26 @@ export function Dashboard() {
               ☰
             </button>
             <div>
-              <h2>
-                {view === "evento" && selected
-                  ? selected.analysis.eventName
-                  : view === "live"
-                    ? "Live"
-                    : view === "alertas"
-                      ? "Alertas"
-                      : "Jogos em análise"}
+              <h2
+                className={
+                  view === "jogos" ? "main-head-title is-brand" : "main-head-title"
+                }
+              >
+                {view === "evento" && selected ? (
+                  selected.analysis.eventName
+                ) : view === "live" ? (
+                  "Live"
+                ) : view === "alertas" ? (
+                  "Alertas"
+                ) : (
+                  <>
+                    Jogos <span>em análise</span>
+                  </>
+                )}
               </h2>
-              <p>
-                {view === "evento"
-                  ? "Todas as informações do evento selecionado"
-                  : "Terminal de liquidez · mercado 3-3"}
-              </p>
+              {view === "evento" && (
+                <p>Todas as informações do evento selecionado</p>
+              )}
             </div>
           </div>
           <div className="main-head-actions">
@@ -632,9 +647,9 @@ export function Dashboard() {
             <div className="match-board">
               <div className="match-board-head" aria-hidden>
                 <span>★</span>
-                <span>Horário</span>
-                <span>Confronto</span>
-                <span>Pressão</span>
+                <span>Tempo</span>
+                <span>Times</span>
+                <span>Status</span>
                 <span>Mercado</span>
               </div>
 
@@ -725,7 +740,19 @@ export function Dashboard() {
               {(live?.alerts ?? []).map((a) => (
                 <li key={a.id} className={severityClass(a.severity)}>
                   <strong>{a.title}</strong>
-                  <p>{a.message}</p>
+                  <div className="alert-event-row">
+                    <p>{a.message}</p>
+                    {a.mexchangeUrl ? (
+                      <a
+                        className="btn-primary btn-alert-bolsa"
+                        href={a.mexchangeUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Abrir na Bolsa
+                      </a>
+                    ) : null}
+                  </div>
                   <time>{formatKickoff(a.at)}</time>
                 </li>
               ))}
@@ -823,12 +850,16 @@ function GameRow({
   const live = liveRow?.live ?? null;
   const isLive = Boolean(live);
   const status = tradeStatus(plan);
+  const statusKey = status.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const [homeGoals, awayGoals] = splitScoreLabel(live?.scoreLabel);
+  const pulse =
+    status === "ENTRAR" ? "is-pulse-entrar" : status === "CORRIGINDO" ? "is-pulse-corrigindo" : "";
 
   return (
     <div
       role="button"
       tabIndex={0}
-      className={`match-card ${active ? "is-active" : ""} ${isLive ? "is-live" : ""} ${favorited ? "is-fav" : ""}`.trim()}
+      className={`match-card ${active ? "is-active" : ""} ${isLive ? "is-live" : ""} ${favorited ? "is-fav" : ""} ${pulse}`.trim()}
       onClick={onOpen}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -843,39 +874,35 @@ function GameRow({
 
       <div className="match-card-time">
         {isLive ? (
-          <>
-            <span className="match-card-live-tag">
-              <span className="dot-live" /> AO VIVO
-            </span>
-            <strong>{formatLiveMinute(live?.minute, live?.status)}</strong>
-          </>
+          <strong className="match-card-minute-badge">
+            {formatLiveMinute(live?.minute, live?.status)}
+          </strong>
         ) : (
-          <>
+          <div className="match-card-kick">
             <span className="match-card-date">{formatKickDate(a.start)}</span>
             <strong>{formatKickTime(a.start)}</strong>
-          </>
+          </div>
         )}
       </div>
 
-      <div className="match-card-center">
-        <div className="match-card-line">
-          <strong className="match-card-teams">
-            {a.home} <span>x</span> {a.away}
-          </strong>
-          {isLive && live?.scoreLabel ? (
-            <span className="match-card-score">{live.scoreLabel}</span>
-          ) : null}
-          <span className="match-card-comp">{a.competition || "Futebol"}</span>
-          <span className={`status-chip status-${status.toLowerCase()}`}>{status}</span>
+      <div className="match-card-sides">
+        <div className="match-card-side">
+          <span className={`match-card-side-score ${isLive ? "" : "is-empty"}`}>
+            {isLive ? homeGoals : ""}
+          </span>
+          <span className="match-card-side-name">{a.home}</span>
+        </div>
+        <div className="match-card-side">
+          <span className={`match-card-side-score ${isLive ? "" : "is-empty"}`}>
+            {isLive ? awayGoals : ""}
+          </span>
+          <span className="match-card-side-name">{a.away}</span>
         </div>
       </div>
 
-      <MatchCardPressure
-        home={a.home}
-        away={a.away}
-        start={a.start}
-        enabled={isLive}
-      />
+      <div className="match-card-status">
+        <span className={`status-chip status-${statusKey}`}>{status}</span>
+      </div>
 
       <div className="match-card-odds">
         <OddsQuoteButtons

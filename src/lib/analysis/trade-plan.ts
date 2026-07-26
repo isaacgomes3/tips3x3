@@ -6,6 +6,11 @@ import {
   type CorrectionAnalysis,
 } from "./correction";
 import { analyzeFluidity, type FluidityReport } from "./fluidity";
+import {
+  isEntryScoreAllowed,
+  resolveInitialFavorite,
+  scoreFromInplay,
+} from "./score-entry";
 
 export type RiskTier = "baixo" | "medio" | "alto" | "fora";
 
@@ -40,6 +45,15 @@ export interface TradePlan {
   oscillation: OscillationSignal | null;
   fluidity: FluidityReport | null;
   correction: CorrectionAnalysis | null;
+  /** Favorito inicial (match odds ≤ 1.80) + elegibilidade do placar live */
+  scoreGate: {
+    favoriteOdd: number | null;
+    favoriteSide: "home" | "away" | null;
+    favoriteOk: boolean;
+    scoreAllowed: boolean;
+    scoreLabel: string | null;
+    detail: string;
+  };
   entryReady: boolean;
   summary: string;
 }
@@ -288,6 +302,38 @@ export function buildTradePlan(opts: {
       (crash.recoveredPct ?? 1) <= trade.crashMaxRecoveryPct,
   );
 
+  const favorite = resolveInitialFavorite(opts.matchOdds);
+  const liveScore = scoreFromInplay(opts.inplay);
+  let scoreAllowed = false;
+  let scoreDetail = favorite.detail;
+  let scoreLabel: string | null = null;
+
+  if (!favorite.qualifies || !favorite.side) {
+    scoreAllowed = false;
+    scoreDetail = favorite.detail;
+  } else if (!liveScore) {
+    scoreAllowed = false;
+    scoreDetail = `${favorite.detail} Aguardando placar live.`;
+  } else {
+    scoreLabel = `${liveScore.home}-${liveScore.away}`;
+    const gate = isEntryScoreAllowed(
+      liveScore.home,
+      liveScore.away,
+      favorite.side,
+    );
+    scoreAllowed = gate.allowed;
+    scoreDetail = `${favorite.detail} ${gate.reason}`;
+  }
+
+  const scoreGate = {
+    favoriteOdd: favorite.odd,
+    favoriteSide: favorite.side,
+    favoriteOk: favorite.qualifies,
+    scoreAllowed,
+    scoreLabel,
+    detail: scoreDetail,
+  };
+
   const entryReady = Boolean(
     inEntryWindow &&
       targetBackOdds != null &&
@@ -295,7 +341,9 @@ export function buildTradePlan(opts: {
       !(fluidity?.lateralized ?? true) &&
       favorableCorrection &&
       !avoidCorrection &&
-      (risk.tier !== "alto" || crashEarlyBounce),
+      (risk.tier !== "alto" || crashEarlyBounce) &&
+      scoreGate.favoriteOk &&
+      scoreGate.scoreAllowed,
   );
 
   const pctLabel = `${(trade.targetProfitPct * 100).toFixed(0)}%`;
@@ -304,6 +352,10 @@ export function buildTradePlan(opts: {
   let summary: string;
   if (layOdds == null) {
     summary = "Sem odd lay 3-3 de referência.";
+  } else if (!scoreGate.favoriteOk) {
+    summary = scoreGate.detail;
+  } else if (liveScore && !scoreGate.scoreAllowed) {
+    summary = `Placar ${scoreGate.scoreLabel}: ${scoreGate.detail}`;
   } else if (crashSetup && crash) {
     if (!inEntryWindow && crash.phase === "trough") {
       summary = `${crash.detail} Odd atual ${layOdds.toFixed(0)} ainda fora de ${window.min}–${window.max} — se corrigir para baixo na janela ou subir após tick ↑, reavaliar.`;
@@ -327,7 +379,7 @@ export function buildTradePlan(opts: {
   } else if (correction && !favorableCorrection) {
     summary = `Lay ${layOdds.toFixed(0)} favorece ${pctLabel} (back ~${backLabel}), mas ainda sem correção. ${correction.summary}`;
   } else if (entryReady) {
-    summary = `ENTRADA: lay ~${layOdds.toFixed(0)} em correção → back ~${backLabel} (~${pctLabel} liability, risco ${risk.tier}).`;
+    summary = `ENTRADA: lay ~${layOdds.toFixed(0)} em correção → back ~${backLabel} (~${pctLabel} liability, risco ${risk.tier}). ${scoreGate.detail}`;
   } else if (risk.favorsQuickCorrection) {
     summary = `Lay ${layOdds.toFixed(0)} favorece correção rápida (~${pctLabel}, back ~${backLabel}). Espere movimento pós-choque — não só a odd.`;
   } else {
@@ -350,6 +402,7 @@ export function buildTradePlan(opts: {
     oscillation,
     fluidity,
     correction,
+    scoreGate,
     entryReady,
     summary,
   };
