@@ -1,0 +1,154 @@
+import { BETBRA, getSessionToken } from "./config";
+import type {
+  BetBraEvent,
+  BetBraEventsResponse,
+  InplayEvent,
+  RadarMap,
+} from "./types";
+
+function mexHeaders(): HeadersInit {
+  return {
+    Accept: "application/json",
+    Origin: BETBRA.mexchangeWeb,
+    Referer: `${BETBRA.mexchangeWeb}/`,
+    Cookie: `session-token=${getSessionToken()}`,
+  };
+}
+
+function clientHeaders(): HeadersInit {
+  return {
+    Accept: "application/json",
+    Origin: BETBRA.origin,
+    Referer: `${BETBRA.origin}/`,
+  };
+}
+
+async function getJson<T>(url: string, headers: HeadersInit): Promise<T> {
+  const res = await fetch(url, {
+    headers,
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`BetBra ${res.status} ${url} ${body.slice(0, 200)}`);
+  }
+
+  return res.json() as Promise<T>;
+}
+
+export function dayWindowUnix(now = new Date()) {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+  // margem para jogos que cruzam meia-noite
+  end.setHours(end.getHours() + 6);
+
+  return {
+    after: Math.floor(start.getTime() / 1000),
+    before: Math.floor(end.getTime() / 1000),
+  };
+}
+
+export async function listSoccerEvents(opts?: {
+  after?: number;
+  before?: number;
+  perPage?: number;
+  offset?: number;
+}): Promise<BetBraEventsResponse> {
+  const { after, before } = opts?.after && opts?.before
+    ? { after: opts.after, before: opts.before }
+    : dayWindowUnix();
+
+  const params = new URLSearchParams({
+    offset: String(opts?.offset ?? 0),
+    "per-page": String(opts?.perPage ?? 50),
+    after: String(after),
+    before: String(before),
+    "sport-ids": String(BETBRA.sportIds.soccer),
+    "sort-by": "volume",
+    "sort-direction": "desc",
+    "en-market-names": "Match Odds,Correct Score,Both Teams To Score,Total",
+    "market-types": "one_x_two,correct_score,both_to_score,total",
+  });
+
+  return getJson<BetBraEventsResponse>(
+    `${BETBRA.mexchangeApi}/events?${params}`,
+    mexHeaders(),
+  );
+}
+
+export async function getEvent(
+  eventId: string,
+  priceDepth = 3,
+  marketIds?: string[],
+): Promise<BetBraEvent> {
+  const params = new URLSearchParams({
+    "odds-type": "DECIMAL",
+  });
+
+  // O book completo de Correct Score (e outros) só vem com market-ids.
+  // price-depth sozinho costuma preencher só Match Odds.
+  if (marketIds?.length) {
+    params.set("market-ids", marketIds.join(","));
+  } else {
+    params.set("price-depth", String(priceDepth));
+  }
+
+  return getJson<BetBraEvent>(
+    `${BETBRA.mexchangeApi}/events/${eventId}?${params}`,
+    mexHeaders(),
+  );
+}
+
+/** Busca o evento e hidrata o book do Correct Score via market-ids. */
+export async function getEventWithScoreBook(
+  eventId: string,
+  priceDepth = 3,
+): Promise<BetBraEvent> {
+  const base = await getEvent(eventId, priceDepth);
+  const cs = base.markets?.find(
+    (m) => (m["name-original"] ?? m.name)?.toLowerCase() === "correct score",
+  );
+  if (!cs?.id) return base;
+
+  const alreadyPriced = (cs.runners ?? []).some(
+    (r) => (r.prices?.length ?? 0) > 0,
+  );
+  if (alreadyPriced) return base;
+
+  try {
+    const priced = await getEvent(eventId, priceDepth, [cs.id]);
+    const pricedCs = priced.markets?.find((m) => m.id === cs.id) ?? priced.markets?.[0];
+    if (!pricedCs) return base;
+
+    return {
+      ...base,
+      markets: (base.markets ?? []).map((m) => (m.id === pricedCs.id ? pricedCs : m)),
+    };
+  } catch {
+    return base;
+  }
+}
+
+export async function getInplayInfo(): Promise<InplayEvent[]> {
+  return getJson<InplayEvent[]>(
+    `${BETBRA.clientApi}/jumper/feedSports/inplay-info`,
+    clientHeaders(),
+  );
+}
+
+export async function getEventsRadar(): Promise<RadarMap[]> {
+  return getJson<RadarMap[]>(
+    `${BETBRA.clientApi}/jumper/feedSports/inplayInfo/eventsRadar`,
+    clientHeaders(),
+  );
+}
+
+export function mexchangeEventUrl(eventId: string, marketId?: string) {
+  if (marketId) {
+    return `${BETBRA.mexchangeWeb}/exchange/sport/soccer/event/${eventId}/market/${marketId}`;
+  }
+  return `${BETBRA.mexchangeWeb}/exchange/sport/soccer/event/${eventId}`;
+}
