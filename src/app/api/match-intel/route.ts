@@ -22,7 +22,9 @@ async function resolveIntel(opts: {
 }): Promise<MatchIntel | null> {
   // FotMob primeiro: Sofascore costuma bloquear IP de VPS (403)
   const fotmob = await getFotmobMatchIntel(opts).catch(() => null);
-  if (fotmob && fotmob.pressure.points.length > 0) return fotmob;
+  if (fotmob && (fotmob.pressure.points.length > 0 || fotmob.extras.length > 0)) {
+    return fotmob;
+  }
 
   const sofa = await Promise.race([
     getSofascoreMatchIntel(opts).catch(() => null),

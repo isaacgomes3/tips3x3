@@ -86,6 +86,7 @@ export interface InplayScoreSide {
   fullTimeScore?: string;
   numberOfYellowCards?: number;
   numberOfRedCards?: number;
+  numberOfCards?: number;
   numberOfCorners?: number;
 }
 

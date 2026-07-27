@@ -50,7 +50,7 @@ export function MatchIntelCard({
   }, [home, away, start]);
 
   if (loading && !data) {
-    return <div className="banner-info">Buscando xG e pressão no Sofascore…</div>;
+    return <div className="banner-info">Buscando xG e pressão…</div>;
   }
 
   if (!data) return null;
@@ -71,14 +71,11 @@ export function MatchIntelCard({
         <div>
           <strong>{intel.matchName}</strong>
           <p>
-            {intel.competition ?? "Sofascore"}
-            {intel.scoreLabel ? ` · ${intel.scoreLabel}` : ""}
-            {intel.status ? ` · ${intel.status}` : ""}
+            {[intel.competition, intel.scoreLabel, intel.status]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
         </div>
-        <a href={intel.sofascoreUrl} target="_blank" rel="noreferrer" className="btn-secondary">
-          Abrir {intel.source === "fotmob" ? "FotMob" : "Sofascore"}
-        </a>
       </div>
 
       <div className="xg-strip">
@@ -119,8 +116,6 @@ export function MatchIntelCard({
           ))}
         </ul>
       )}
-
-      <p className="match-intel-foot">Match: {intel.matchedBy}</p>
     </div>
   );
 }

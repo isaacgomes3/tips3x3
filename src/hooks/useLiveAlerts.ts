@@ -5,6 +5,7 @@ import type { FavoriteMatch } from "@/lib/favorites";
 import {
   playAlertSound,
   unlockAlertAudio,
+  isAlertAudioUnlocked,
   type AlertSoundKind,
 } from "@/lib/alert-sound";
 
@@ -41,10 +42,7 @@ function parseGoals(scoreLabel?: string | null): number | null {
   return Number(m[1]) + Number(m[2]);
 }
 
-function matchName(
-  favorites: FavoriteMatch[],
-  row: LiveScoreRow,
-): string {
+function matchName(favorites: FavoriteMatch[], row: LiveScoreRow): string {
   const fav = favorites.find((f) => f.eventId === row.analysis.eventId);
   if (fav) return `${fav.home} vs ${fav.away}`;
   return (
@@ -55,8 +53,22 @@ function matchName(
 
 function isFinishedStatus(status?: string | null) {
   if (!status) return false;
-  return /^(FT|FINISHED|ENDED|COMPLETE|FullTime|FINAL)/i.test(status.trim()) ||
-    /final|encerrado|ended|finished|full.?time/i.test(status);
+  return (
+    /^(FT|FINISHED|ENDED|COMPLETE|FullTime|FINAL)/i.test(status.trim()) ||
+    /final|encerrado|ended|finished|full.?time/i.test(status)
+  );
+}
+
+async function ensureNotifyPermission(): Promise<boolean> {
+  if (typeof window === "undefined" || !("Notification" in window)) return false;
+  if (Notification.permission === "granted") return true;
+  if (Notification.permission === "denied") return false;
+  try {
+    const result = await Notification.requestPermission();
+    return result === "granted";
+  } catch {
+    return false;
+  }
 }
 
 function browserNotify(opts: { title: string; body: string; tag: string }) {
@@ -67,28 +79,38 @@ function browserNotify(opts: { title: string; body: string; tag: string }) {
       body: opts.body,
       tag: opts.tag,
     });
-    window.setTimeout(() => n.close(), 14_000);
+    window.setTimeout(() => n.close(), 16_000);
+  } catch {
+    // ignore
+  }
+}
+
+function vibrateEnter() {
+  try {
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate([80, 40, 80, 40, 160]);
+    }
   } catch {
     // ignore
   }
 }
 
 /**
- * Alertas mobile/desktop: gol e fim de jogo em favoritos;
- * indicação ENTRAR em qualquer partida monitorada.
- * Mostra toast na tela + som + Notification (se permitido).
+ * Alertas mobile/desktop: gol/FT em favoritos + ENTRAR em qualquer monitorado.
  */
 export function useLiveAlerts(
   favorites: FavoriteMatch[],
   liveRows: LiveScoreRow[] | undefined,
 ) {
   const [toasts, setToasts] = useState<LiveToast[]>([]);
+  const [alertsArmed, setAlertsArmed] = useState(false);
   const lastScoreRef = useRef<Map<string, string>>(new Map());
   const lastStatusRef = useRef<Map<string, string>>(new Map());
-  const lastEntryRef = useRef<Map<string, boolean>>(new Map());
+  const enterNotifiedRef = useRef<Set<string>>(new Set());
   const seenLiveFavRef = useRef<Set<string>>(new Set());
   const primedRef = useRef(false);
   const ftNotifiedRef = useRef<Set<string>>(new Set());
+  const bootAtRef = useRef(Date.now());
 
   const dismiss = useCallback((id: string) => {
     setToasts((list) => list.filter((t) => t.id !== id));
@@ -113,6 +135,7 @@ export function useLiveAlerts(
         return [toast, ...without].slice(0, 5);
       });
       void playAlertSound(opts.kind);
+      if (opts.kind === "enter") vibrateEnter();
       browserNotify({
         title: opts.title,
         body: opts.body,
@@ -120,19 +143,36 @@ export function useLiveAlerts(
       });
       window.setTimeout(() => {
         setToasts((list) => list.filter((t) => t.id !== toast.id));
-      }, 12_000);
+      }, opts.kind === "enter" ? 20_000 : 12_000);
     },
     [],
   );
 
-  // Desbloqueia áudio no primeiro toque (necessário no iOS/Android)
+  const armAlerts = useCallback(async () => {
+    await unlockAlertAudio();
+    await ensureNotifyPermission();
+    setAlertsArmed(
+      isAlertAudioUnlocked() ||
+        (typeof Notification !== "undefined" &&
+          Notification.permission === "granted"),
+    );
+  }, []);
+
   useEffect(() => {
     const unlock = () => {
-      void unlockAlertAudio();
+      void unlockAlertAudio().then(() => {
+        if (isAlertAudioUnlocked()) setAlertsArmed(true);
+      });
     };
     window.addEventListener("pointerdown", unlock, { once: true });
     window.addEventListener("touchstart", unlock, { once: true });
     window.addEventListener("keydown", unlock, { once: true });
+    if (
+      typeof Notification !== "undefined" &&
+      Notification.permission === "granted"
+    ) {
+      setAlertsArmed(true);
+    }
     return () => {
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("touchstart", unlock);
@@ -146,9 +186,12 @@ export function useLiveAlerts(
     );
     const rows = liveRows ?? [];
     const liveIds = new Set(rows.map((r) => r.analysis.eventId));
+    const primed = primedRef.current;
+    // Após ~1.2s do boot, já alerta ENTRAR mesmo se já estava pronto no 1º poll
+    const warm =
+      primed || Date.now() - bootAtRef.current > 1200 || rows.length > 0;
 
-    // ——— Fim de jogo: favorito sumiu do feed live após ter sido visto ———
-    if (primedRef.current) {
+    if (primed) {
       for (const id of seenLiveFavRef.current) {
         if (!favIds.has(id)) continue;
         if (liveIds.has(id)) continue;
@@ -177,11 +220,10 @@ export function useLiveAlerts(
         seenLiveFavRef.current.add(id);
       }
 
-      // ——— Gol em favorito ———
       if (isFav && label) {
         const prev = lastScoreRef.current.get(id);
         lastScoreRef.current.set(id, label);
-        if (primedRef.current && prev && prev !== label) {
+        if (primed && prev && prev !== label) {
           const prevGoals = parseGoals(prev);
           const nextGoals = parseGoals(label);
           if (
@@ -203,12 +245,11 @@ export function useLiveAlerts(
         }
       }
 
-      // ——— Fim de jogo via status ———
       if (isFav) {
         const prevStatus = lastStatusRef.current.get(id);
         if (status) lastStatusRef.current.set(id, status);
         if (
-          primedRef.current &&
+          primed &&
           !ftNotifiedRef.current.has(id) &&
           isFinishedStatus(status) &&
           !isFinishedStatus(prevStatus)
@@ -223,26 +264,59 @@ export function useLiveAlerts(
         }
       }
 
-      // ——— ENTRAR (qualquer partida monitorada) ———
+      // ENTRAR — alerta na 1ª vez que fica pronto (e de novo se sair e voltar)
       const ready = Boolean(row.tradePlan?.entryReady || row.confirmed);
-      const wasReady = lastEntryRef.current.get(id) ?? false;
-      lastEntryRef.current.set(id, ready);
-      if (primedRef.current && ready && !wasReady) {
-        const minute =
-          row.live?.minute != null ? ` @ ${Math.floor(row.live.minute)}′` : "";
-        pushAlert({
-          kind: "enter",
-          title: `ENTRAR · ${name}`,
-          body: label
-            ? `Indicação de entrada · ${label}${minute}`
-            : `Indicação de entrada${minute}`,
-          tag: `tips3x3-enter-${id}`,
-        });
+      if (ready) {
+        if (warm && !enterNotifiedRef.current.has(id)) {
+          enterNotifiedRef.current.add(id);
+          const minute =
+            row.live?.minute != null
+              ? ` @ ${Math.floor(row.live.minute)}′`
+              : "";
+          pushAlert({
+            kind: "enter",
+            title: `ENTRAR · ${name}`,
+            body: label
+              ? `Indicação de entrada · ${label}${minute}`
+              : `Indicação de entrada${minute}`,
+            tag: `tips3x3-enter-${id}-${Date.now()}`,
+          });
+        }
+      } else {
+        enterNotifiedRef.current.delete(id);
       }
     }
 
     primedRef.current = true;
   }, [favorites, liveRows, pushAlert]);
 
-  return { toasts, dismiss };
+  // Revalida quando o celular volta à tela
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      void unlockAlertAudio();
+      const rows = liveRows ?? [];
+      for (const row of rows) {
+        const ready = Boolean(row.tradePlan?.entryReady || row.confirmed);
+        const id = row.analysis.eventId;
+        if (ready && !enterNotifiedRef.current.has(id)) {
+          enterNotifiedRef.current.add(id);
+          const name = matchName(favorites, row);
+          const label = row.live?.scoreLabel;
+          pushAlert({
+            kind: "enter",
+            title: `ENTRAR · ${name}`,
+            body: label
+              ? `Indicação de entrada · ${label}`
+              : "Indicação de entrada",
+            tag: `tips3x3-enter-${id}-vis`,
+          });
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [favorites, liveRows, pushAlert]);
+
+  return { toasts, dismiss, alertsArmed, armAlerts };
 }

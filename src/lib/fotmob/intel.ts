@@ -83,60 +83,157 @@ function pressureSummary(points: SofaGraphPoint[]) {
   return { homeBias: homeShare, awayBias: 1 - homeShare, latest, summary };
 }
 
-function extractXgFromFotmob(details: Record<string, unknown>) {
-  const extras: Array<{ name: string; home: string; away: string }> = [];
-  let xgHome: number | null = null;
-  let xgAway: number | null = null;
+function translateStatName(title: string): string {
+  const t = title.trim();
+  const map: Array<[RegExp, string]> = [
+    [/ball possession|possession/i, "Posse de Bola (%)"],
+    [/expected goals|^xg$/i, "Expected Goals (xG)"],
+    [/total shots|shots$/i, "Finalizações"],
+    [/shots on target/i, "Finalizações no Gol"],
+    [/shots off target|off target/i, "Finalizações para Fora"],
+    [/blocked shots|shots blocked/i, "Chutes Bloqueados"],
+    [/corners?/i, "Escanteios"],
+    [/offsides?/i, "Impedimentos"],
+    [/fouls?/i, "Faltas"],
+    [/yellow cards?/i, "Cartões Amarelos"],
+    [/red cards?/i, "Cartões Vermelhos"],
+    [/dangerous attacks?/i, "Ataques Perigosos"],
+    [/^attacks?$/i, "Ataques"],
+    [/big chances?/i, "Grandes chances"],
+    [/accurate passes|passes accurate/i, "Passes certos"],
+    [/pass(?:es)? accuracy|accurate pass/i, "Precisão de passe (%)"],
+    [/touches in opposition box|touches in opp/i, "Toques na área"],
+    [/woodwork|hit woodwork/i, "Traves"],
+    [/saves?/i, "Defesas"],
+    [/tackles?/i, "Desarmes"],
+    [/duels won/i, "Duelos ganhos"],
+  ];
+  for (const [re, label] of map) {
+    if (re.test(t)) return label;
+  }
+  return t;
+}
 
-  const periods =
-    (details as { content?: { stats?: { Periods?: Record<string, unknown> } } })
-      .content?.stats?.Periods ?? {};
-  const all = (periods.All ?? periods.all ?? []) as Array<{
-    title?: string;
-    stats?: Array<{ title?: string; stats?: Array<{ title?: string; home?: string; away?: string }> }>;
-  }>;
+type FotmobStatRow = {
+  title?: string;
+  key?: string;
+  type?: string;
+  home?: string | number | null;
+  away?: string | number | null;
+  stats?: Array<string | number | null> | FotmobStatRow[];
+};
 
-  // FotMob shapes vary: All can be array of groups
-  const groups = Array.isArray(all) ? all : [];
+function cellValue(v: string | number | null | undefined): string {
+  if (v == null || v === "") return "—";
+  return String(v);
+}
+
+function extractRowsFromPeriodBlock(block: unknown): Array<{
+  name: string;
+  home: string;
+  away: string;
+  key?: string;
+}> {
+  const out: Array<{ name: string; home: string; away: string; key?: string }> = [];
+
+  // Shape nova: { stats: [ { title, stats: [ rows ] } ] }
+  // Shape antiga: [ { title, stats: [ rows ] } ]
+  const groups: Array<{ title?: string; stats?: FotmobStatRow[] }> = Array.isArray(block)
+    ? (block as Array<{ title?: string; stats?: FotmobStatRow[] }>)
+    : block && typeof block === "object" && Array.isArray((block as { stats?: unknown }).stats)
+      ? ((block as { stats: Array<{ title?: string; stats?: FotmobStatRow[] }> }).stats)
+      : [];
+
   for (const group of groups) {
-    const items = group.stats ?? [];
-    for (const item of items) {
-      // nested again in some payloads
-      const nested = item.stats ?? [item];
-      for (const row of nested as Array<{
-        title?: string;
-        home?: string;
-        away?: string;
-      }>) {
-        const title = row.title ?? "";
-        if (/expected goals|^xg$/i.test(title)) {
-          xgHome = parseFloat(String(row.home ?? "").replace(",", ".")) || null;
-          xgAway = parseFloat(String(row.away ?? "").replace(",", ".")) || null;
-        }
-        if (
-          /expected goals|big chances|total shots|shots on target|ball possession|corner/i.test(
-            title,
-          )
-        ) {
-          extras.push({
-            name: title,
-            home: String(row.home ?? "—"),
-            away: String(row.away ?? "—"),
+    for (const row of group.stats ?? []) {
+      if (!row?.title || row.type === "title") continue;
+
+      let home: string | number | null | undefined = row.home;
+      let away: string | number | null | undefined = row.away;
+
+      // Shape atual: stats: [homeValue, awayValue]
+      if (
+        Array.isArray(row.stats) &&
+        row.stats.length >= 2 &&
+        (typeof row.stats[0] !== "object" || row.stats[0] == null)
+      ) {
+        home = row.stats[0] as string | number | null;
+        away = row.stats[1] as string | number | null;
+      }
+
+      // Nested rows (legado)
+      if (
+        Array.isArray(row.stats) &&
+        row.stats.length > 0 &&
+        typeof row.stats[0] === "object" &&
+        row.stats[0] != null
+      ) {
+        for (const nested of row.stats as FotmobStatRow[]) {
+          if (!nested?.title || nested.type === "title") continue;
+          let nh = nested.home;
+          let na = nested.away;
+          if (
+            Array.isArray(nested.stats) &&
+            nested.stats.length >= 2 &&
+            (typeof nested.stats[0] !== "object" || nested.stats[0] == null)
+          ) {
+            nh = nested.stats[0] as string | number | null;
+            na = nested.stats[1] as string | number | null;
+          }
+          out.push({
+            name: translateStatName(nested.title),
+            home: cellValue(nh),
+            away: cellValue(na),
+            key: nested.key,
           });
         }
+        continue;
       }
+
+      out.push({
+        name: translateStatName(row.title),
+        home: cellValue(home),
+        away: cellValue(away),
+        key: row.key,
+      });
     }
   }
 
-  const seen = new Set<string>();
-  const unique = extras.filter((e) => {
-    const k = e.name.toLowerCase();
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
+  return out;
+}
 
-  return { xgHome, xgAway, extras: unique.slice(0, 8) };
+function extractXgFromFotmob(details: Record<string, unknown>) {
+  const periods =
+    (details as { content?: { stats?: { Periods?: Record<string, unknown> } } })
+      .content?.stats?.Periods ?? {};
+
+  const allBlock = periods.All ?? periods.all ?? periods.FirstHalf ?? periods.firstHalf;
+  const rows = extractRowsFromPeriodBlock(allBlock);
+
+  let xgHome: number | null = null;
+  let xgAway: number | null = null;
+  const extras: Array<{ name: string; home: string; away: string }> = [];
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    const k = row.name.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+
+    if (/expected goals|^xg$/i.test(row.name) || row.key === "expected_goals") {
+      const h = parseFloat(String(row.home).replace(",", "."));
+      const a = parseFloat(String(row.away).replace(",", "."));
+      xgHome = Number.isFinite(h) ? h : null;
+      xgAway = Number.isFinite(a) ? a : null;
+    }
+
+    // ignora linhas sem dado útil
+    if (row.home === "—" && row.away === "—") continue;
+
+    extras.push({ name: row.name, home: row.home, away: row.away });
+  }
+
+  return { xgHome, xgAway, extras };
 }
 
 export async function getFotmobMatchIntel(opts: {
@@ -239,6 +336,25 @@ export async function getFotmobMatchIntel(opts: {
       ? `${best.match.home.score}-${best.match.away.score}`
       : undefined);
 
+  const detailsWithStats = {
+    ...details,
+    __allStats: extras,
+  } as Record<string, unknown>;
+
+  let rich = null as Awaited<
+    ReturnType<typeof import("@/lib/fotmob/rich").buildFotmobRichFromDetails>
+  > | null;
+  try {
+    const { buildFotmobRichFromDetails } = await import("@/lib/fotmob/rich");
+    rich = await buildFotmobRichFromDetails(detailsWithStats, best.match.id, {
+      home: homeName,
+      away: awayName,
+      competition: best.league,
+    });
+  } catch {
+    rich = null;
+  }
+
   return {
     source: "fotmob",
     sofaEventId: best.match.id,
@@ -256,5 +372,6 @@ export async function getFotmobMatchIntel(opts: {
     extras,
     matchedBy: best.matchedBy,
     sofascoreUrl: `${FOTMOB_ORIGIN}/match/${best.match.id}`,
+    rich,
   };
 }

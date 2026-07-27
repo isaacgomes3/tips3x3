@@ -107,7 +107,12 @@ function extractXg(stats: StatsResponse | null) {
           }
         }
         if (
-          /expected goals|big chances|total shots|shots on target|ball possession|dangerous attacks|corner/i.test(
+          name &&
+          (block.period?.toUpperCase() === "ALL" || !block.period)
+        ) {
+          extras.push({ name, home, away });
+        } else if (
+          /expected goals|big chances|total shots|shots on target|ball possession|dangerous attacks|corner|foul|card|attack|offside|save|tackle/i.test(
             name,
           )
         ) {
@@ -126,7 +131,7 @@ function extractXg(stats: StatsResponse | null) {
     return true;
   });
 
-  return { xgHome, xgAway, period, extras: unique.slice(0, 8) };
+  return { xgHome, xgAway, period, extras: unique };
 }
 
 function pressureSummary(points: SofaGraphPoint[]) {

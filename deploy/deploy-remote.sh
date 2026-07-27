@@ -27,7 +27,8 @@ echo "==> Build + PM2 na VPS"
 ssh "$HOST" bash -s <<'REMOTE'
 set -euo pipefail
 cd /var/www/tips3x3
-npm ci --omit=dev
+# DevDeps necessárias no build (Tailwind/PostCSS/TypeScript)
+npm ci
 # Playwright browser para Sofascore (server-side)
 npx playwright-core install chromium || npx playwright install chromium || true
 npm run build

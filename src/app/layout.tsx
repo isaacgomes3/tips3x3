@@ -1,22 +1,28 @@
 import type { Metadata } from "next";
-import { Archivo_Black, Manrope } from "next/font/google";
+import { Inter, Rajdhani, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 
-const archivoBlack = Archivo_Black({
-  weight: "400",
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   variable: "--font-display-loaded",
+  weight: ["500", "600", "700"],
 });
 
-const manrope = Manrope({
+const inter = Inter({
   subsets: ["latin"],
   variable: "--font-body-loaded",
 });
 
+const rajdhani = Rajdhani({
+  subsets: ["latin"],
+  variable: "--font-num-loaded",
+  weight: ["600", "700"],
+});
+
 export const metadata: Metadata = {
-  title: "tips3x3 · Lay placar 3-3",
+  title: "tips3x3 · Exchange Futebol com IA",
   description:
-    "Painel de dados, análise pré-live e alertas de entrada para lay no placar exato 3-3 no Mexchange BetBra.",
+    "Análises em tempo real, filtros inteligentes e estratégias profissionais para quem opera o mercado de Exchange Futebol.",
 };
 
 export const viewport = {
@@ -33,7 +39,7 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
-      className={`${archivoBlack.variable} ${manrope.variable} h-full antialiased`}
+      className={`${spaceGrotesk.variable} ${inter.variable} ${rajdhani.variable} h-full antialiased`}
     >
       <body className="min-h-full">{children}</body>
     </html>

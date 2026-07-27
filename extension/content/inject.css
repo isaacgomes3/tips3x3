@@ -1,0 +1,14 @@
+/* Acelera animações e reduz atrito visual quando ativo */
+html.t3x3-fast,
+html.t3x3-fast * {
+  scroll-behavior: auto !important;
+  animation-duration: 0.01ms !important;
+  animation-delay: 0ms !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0ms !important;
+}
+
+html.t3x3-fast [class*="overlay"][aria-hidden="true"],
+html.t3x3-fast [class*="Overlay"][aria-hidden="true"] {
+  pointer-events: none !important;
+}

@@ -37,4 +37,6 @@ export type MatchIntel = {
   extras: Array<{ name: string; home: string; away: string }>;
   matchedBy: string;
   sofascoreUrl: string;
+  /** Pacote visual FotMob (lineup/form/table/momentum). Só quando source=fotmob. */
+  rich?: import("@/lib/fotmob/rich").FotmobRichMatch | null;
 };

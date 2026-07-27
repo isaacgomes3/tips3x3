@@ -8,8 +8,11 @@ import { MomentAnalysisCard } from "@/components/MomentAnalysisCard";
 import { OddsQuoteButtons } from "@/components/OddsQuoteButtons";
 import { OddsVolumeChart } from "@/components/OddsVolumeChart";
 import { LiveAlertToasts } from "@/components/LiveAlertToasts";
+import { CentralGestao } from "@/components/CentralGestao";
+import { MatchStatsDrawer, type StatsTarget } from "@/components/MatchStatsDrawer";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useLiveAlerts } from "@/hooks/useLiveAlerts";
+import { BarChart3 } from "lucide-react";
 
 type TradePlan = {
   layOdds: number | null;
@@ -180,7 +183,7 @@ type LivePayload = {
   error?: string;
 };
 
-type NavView = "jogos" | "live" | "alertas" | "evento";
+type NavView = "jogos" | "live" | "alertas" | "gestao" | "evento";
 
 function formatKickTime(iso: string) {
   try {
@@ -273,10 +276,28 @@ export function Dashboard() {
   const [query, setQuery] = useState("");
   const [tick, setTick] = useState(0);
   const [view, setView] = useState<NavView>("jogos");
+  const [statsTarget, setStatsTarget] = useState<StatsTarget | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { favorites, favoriteIds, toggleFavorite, isFavorite } = useFavorites();
 
-  const { toasts, dismiss } = useLiveAlerts(favorites, live?.rows);
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [sidebarOpen]);
+
+  const { toasts, dismiss, alertsArmed, armAlerts } = useLiveAlerts(
+    favorites,
+    live?.rows,
+  );
   const [detailOpen, setDetailOpen] = useState<Record<string, boolean>>({
     trade: true,
     moment: true,
@@ -311,7 +332,7 @@ export function Dashboard() {
   }, [load, tick]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setTick((t) => t + 1), 20000);
+    const id = window.setInterval(() => setTick((t) => t + 1), 10000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -462,8 +483,20 @@ export function Dashboard() {
 
   return (
     <div className="app-frame">
-      <LiveAlertToasts toasts={toasts} onDismiss={dismiss} />
-      <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`}>
+      <LiveAlertToasts
+        toasts={toasts}
+        onDismiss={dismiss}
+        alertsArmed={alertsArmed}
+        onArmAlerts={() => void armAlerts()}
+      />
+      <MatchStatsDrawer
+        target={statsTarget}
+        onClose={() => setStatsTarget(null)}
+      />
+      <aside
+        id="app-sidebar"
+        className={`sidebar ${sidebarOpen ? "is-open" : ""}`}
+      >
         <div className="sidebar-brand">
           <img
             className="brand-logo"
@@ -472,6 +505,14 @@ export function Dashboard() {
             width={180}
             height={53}
           />
+          <button
+            type="button"
+            className="sidebar-close"
+            aria-label="Fechar menu"
+            onClick={() => setSidebarOpen(false)}
+          >
+            ✕
+          </button>
         </div>
 
         <nav className="sidebar-nav" aria-label="Menu principal">
@@ -511,15 +552,23 @@ export function Dashboard() {
             {entryAlerts > 0 && <span className="sidebar-badge hot">{entryAlerts}</span>}
           </button>
 
+          <p className="sidebar-section">Gestão</p>
+          <button
+            type="button"
+            className={`sidebar-link ${view === "gestao" ? "active" : ""}`}
+            onClick={() => goNav("gestao")}
+          >
+            <span className="sidebar-ico" aria-hidden>
+              ⌘
+            </span>
+            Central de banca
+          </button>
+
           <p className="sidebar-section">Operações</p>
           <button
             type="button"
             className={`sidebar-link ${view === "evento" ? "active" : ""}`}
-            onClick={() => {
-              if (selectedId) setView("evento");
-              else goNav("jogos");
-            }}
-            disabled={!selectedId && view !== "evento"}
+            onClick={() => goNav("evento")}
           >
             <span className="sidebar-ico" aria-hidden>
               ◆
@@ -540,9 +589,19 @@ export function Dashboard() {
         </nav>
 
         <div className="sidebar-foot">
-          <p>Lay preferido 20–32 · ~1% liability · menos risco</p>
           <button type="button" className="btn-ghost" onClick={() => setTick((t) => t + 1)}>
             Atualizar agora
+          </button>
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => {
+              void fetch("/api/auth/logout", { method: "POST" }).then(() => {
+                window.location.href = "/login";
+              });
+            }}
+          >
+            Sair
           </button>
         </div>
       </aside>
@@ -562,8 +621,10 @@ export function Dashboard() {
             <button
               type="button"
               className="btn-menu"
-              aria-label="Abrir menu"
-              onClick={() => setSidebarOpen(true)}
+              aria-label={sidebarOpen ? "Fechar menu" : "Abrir menu"}
+              aria-expanded={sidebarOpen}
+              aria-controls="app-sidebar"
+              onClick={() => setSidebarOpen((v) => !v)}
             >
               ☰
             </button>
@@ -579,6 +640,8 @@ export function Dashboard() {
                   "Live"
                 ) : view === "alertas" ? (
                   "Alertas"
+                ) : view === "gestao" ? (
+                  "Central de gestão"
                 ) : (
                   <>
                     Jogos <span>em análise</span>
@@ -706,6 +769,18 @@ export function Dashboard() {
                       })
                     }
                     onOpen={() => openEvent(row.analysis.eventId)}
+                    onOpenStats={() =>
+                      setStatsTarget({
+                        eventId: row.analysis.eventId,
+                        home: row.analysis.home,
+                        away: row.analysis.away,
+                        start: row.analysis.start,
+                        scoreLabel: liveMap.get(row.analysis.eventId)?.live?.scoreLabel,
+                        minute: liveMap.get(row.analysis.eventId)?.live?.minute,
+                        status: liveMap.get(row.analysis.eventId)?.live?.status,
+                        competition: row.analysis.competition,
+                      })
+                    }
                   />
                 ))}
               </div>
@@ -770,6 +845,12 @@ export function Dashboard() {
                 <li className="empty">Nenhum alerta ainda.</li>
               )}
             </ul>
+          </div>
+        )}
+
+        {view === "gestao" && (
+          <div className="panel-block">
+            <CentralGestao />
           </div>
         )}
 
@@ -847,6 +928,7 @@ function GameRow({
   favorited,
   onToggleFavorite,
   onOpen,
+  onOpenStats,
 }: {
   row: OpportunityRow;
   liveRow?: LivePayload["rows"][number];
@@ -854,6 +936,7 @@ function GameRow({
   favorited: boolean;
   onToggleFavorite: () => void;
   onOpen: () => void;
+  onOpenStats: () => void;
 }) {
   const a = row.analysis;
   const plan = liveRow?.tradePlan ?? a.tradePlan;
@@ -915,6 +998,18 @@ function GameRow({
       </div>
 
       <div className="match-card-odds">
+        <button
+          type="button"
+          className="match-stats-btn"
+          title="Estatísticas do jogo"
+          aria-label="Ver estatísticas"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenStats();
+          }}
+        >
+          <BarChart3 />
+        </button>
         <OddsQuoteButtons
           backOdds={a.quotes?.back.odds}
           backAmount={a.quotes?.back.amount ?? 0}
@@ -1116,7 +1211,7 @@ function EventDetail({
 
         <CollapsePanel
           title="xG & pressão"
-          subtitle="Sofascore · expected goals e attack momentum"
+          subtitle="Expected goals e attack momentum"
           open={detailOpen.intel}
           onToggle={() => onToggle("intel")}
         >

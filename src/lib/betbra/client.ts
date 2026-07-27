@@ -139,11 +139,64 @@ export async function getInplayInfo(): Promise<InplayEvent[]> {
   );
 }
 
+export async function getInplayByEventId(
+  eventId: string,
+): Promise<InplayEvent | null> {
+  const list = await getInplayInfo();
+  return list.find((e) => e.eventId === eventId) ?? null;
+}
+
 export async function getEventsRadar(): Promise<RadarMap[]> {
   return getJson<RadarMap[]>(
     `${BETBRA.clientApi}/jumper/feedSports/inplayInfo/eventsRadar`,
     clientHeaders(),
   );
+}
+
+/** Converte o feed live da Bolsa em linhas de estatística casa/fora. */
+export function inplayToStatRows(ip: InplayEvent): Array<{
+  name: string;
+  home: string;
+  away: string;
+}> {
+  const h = ip.score?.home;
+  const a = ip.score?.away;
+  if (!h || !a) return [];
+
+  const rows: Array<{ name: string; home: string; away: string }> = [
+    {
+      name: "Placar",
+      home: String(h.score ?? "0"),
+      away: String(a.score ?? "0"),
+    },
+    {
+      name: "Placar HT",
+      home: String(h.halfTimeScore ?? "—"),
+      away: String(a.halfTimeScore ?? "—"),
+    },
+    {
+      name: "Escanteios",
+      home: String(h.numberOfCorners ?? 0),
+      away: String(a.numberOfCorners ?? 0),
+    },
+    {
+      name: "Cartões Amarelos",
+      home: String(h.numberOfYellowCards ?? 0),
+      away: String(a.numberOfYellowCards ?? 0),
+    },
+    {
+      name: "Cartões Vermelhos",
+      home: String(h.numberOfRedCards ?? 0),
+      away: String(a.numberOfRedCards ?? 0),
+    },
+    {
+      name: "Cartões (total)",
+      home: String(h.numberOfCards ?? 0),
+      away: String(a.numberOfCards ?? 0),
+    },
+  ];
+
+  return rows;
 }
 
 export function mexchangeEventUrl(eventId: string, marketId?: string) {
