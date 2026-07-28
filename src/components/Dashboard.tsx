@@ -12,6 +12,7 @@ import { LiveAlertToasts } from "@/components/LiveAlertToasts";
 import { CentralGestao } from "@/components/CentralGestao";
 import { TradingTerminal } from "@/components/terminal/TradingTerminal";
 import { useBankrollData } from "@/hooks/useBankrollData";
+import { useGamesLiveEnrichment, type EnrichedLiveSnapshot } from "@/hooks/useGamesLiveEnrichment";
 import { MatchStatsDrawer, type StatsTarget } from "@/components/MatchStatsDrawer";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useLiveAlerts } from "@/hooks/useLiveAlerts";
@@ -216,6 +217,17 @@ type LivePayload = {
 
 type NavView = "dashboard" | "jogos" | "live" | "alertas" | "gestao" | "evento" | "config";
 type StrategyId = "lay-3x3" | "over-limite";
+
+function normalizeTeamKey(home: string, away: string) {
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  return `${norm(home)}|${norm(away)}`;
+}
 
 function isNavView(v: string | null): v is NavView {
   return (
@@ -428,6 +440,34 @@ export function Dashboard() {
     return map;
   }, [live]);
 
+  const liveByTeams = useMemo(() => {
+    const map = new Map<string, LivePayload["rows"][number]>();
+    for (const row of live?.rows ?? []) {
+      const a = row.analysis;
+      const home = a.home ?? "";
+      const away = a.away ?? "";
+      if (home && away) map.set(normalizeTeamKey(home, away), row);
+    }
+    return map;
+  }, [live]);
+
+  const resolveLiveRow = useCallback(
+    (row: OpportunityRow) => {
+      const byId = liveMap.get(row.analysis.eventId);
+      if (byId?.live) return byId;
+      const byTeams = liveByTeams.get(
+        normalizeTeamKey(row.analysis.home, row.analysis.away),
+      );
+      return byTeams ?? byId;
+    },
+    [liveMap, liveByTeams],
+  );
+
+  const hasBetbraLive = useCallback(
+    (eventId: string) => Boolean(liveMap.get(eventId)?.live),
+    [liveMap],
+  );
+
   const liveAsOpportunities = useMemo((): OpportunityRow[] => {
     return (live?.rows ?? [])
       .filter((r) => r.live)
@@ -510,10 +550,19 @@ export function Dashboard() {
       return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
     };
     const liveMinute = (row: OpportunityRow) => {
-      const m = liveMap.get(row.analysis.eventId)?.live?.minute;
+      const lr = resolveLiveRow(row);
+      const m = lr?.live?.minute;
       return Number.isFinite(Number(m)) ? Number(m) : -1;
     };
-    const isLiveRow = (row: OpportunityRow) => Boolean(liveMap.get(row.analysis.eventId)?.live);
+    const isLiveRow = (row: OpportunityRow) => {
+      if (resolveLiveRow(row)?.live) return true;
+      const start = Date.parse(row.analysis.start);
+      return (
+        Number.isFinite(start) &&
+        start <= Date.now() + 8 * 60_000 &&
+        start >= Date.now() - 4 * 60 * 60_000
+      );
+    };
     const isEntry = (row: OpportunityRow) => {
       if (strategy === "over-limite") {
         const ol = resolveOverLimite(row, liveMap.get(row.analysis.eventId));
@@ -569,9 +618,20 @@ export function Dashboard() {
     strategy,
     liveAsOpportunities,
     liveMap,
+    resolveLiveRow,
     favoriteIds,
     favorites,
   ]);
+
+  const liveEnrichment = useGamesLiveEnrichment(
+    games.map((g) => ({
+      eventId: g.analysis.eventId,
+      home: g.analysis.home,
+      away: g.analysis.away,
+      start: g.analysis.start,
+    })),
+    hasBetbraLive,
+  );
 
   const selected = useMemo(() => {
     if (!selectedId) return null;
@@ -926,7 +986,13 @@ export function Dashboard() {
                   <GameRow
                     key={row.analysis.eventId}
                     row={row}
-                    liveRow={liveMap.get(row.analysis.eventId)}
+                    liveRow={resolveLiveRow(row)}
+                    enrichedLive={liveEnrichment.resolve({
+                      eventId: row.analysis.eventId,
+                      home: row.analysis.home,
+                      away: row.analysis.away,
+                      start: row.analysis.start,
+                    })}
                     strategy={strategy}
                     active={row.analysis.eventId === selectedId}
                     favorited={isFavorite(row.analysis.eventId)}
@@ -939,18 +1005,25 @@ export function Dashboard() {
                       })
                     }
                     onOpen={() => openEvent(row.analysis.eventId)}
-                    onOpenStats={() =>
+                    onOpenStats={() => {
+                      const lr = resolveLiveRow(row);
+                      const en = liveEnrichment.resolve({
+                        eventId: row.analysis.eventId,
+                        home: row.analysis.home,
+                        away: row.analysis.away,
+                        start: row.analysis.start,
+                      });
                       setStatsTarget({
                         eventId: row.analysis.eventId,
                         home: row.analysis.home,
                         away: row.analysis.away,
                         start: row.analysis.start,
-                        scoreLabel: liveMap.get(row.analysis.eventId)?.live?.scoreLabel,
-                        minute: liveMap.get(row.analysis.eventId)?.live?.minute,
-                        status: liveMap.get(row.analysis.eventId)?.live?.status,
+                        scoreLabel: lr?.live?.scoreLabel ?? en?.scoreLabel,
+                        minute: lr?.live?.minute ?? en?.minute,
+                        status: lr?.live?.status ?? en?.status,
                         competition: row.analysis.competition,
-                      })
-                    }
+                      });
+                    }}
                   />
                 ))}
               </div>
@@ -1216,6 +1289,7 @@ function LiveScoreBadge({
 function GameRow({
   row,
   liveRow,
+  enrichedLive,
   strategy = "lay-3x3",
   active,
   favorited,
@@ -1225,6 +1299,7 @@ function GameRow({
 }: {
   row: OpportunityRow;
   liveRow?: LivePayload["rows"][number];
+  enrichedLive?: EnrichedLiveSnapshot | null;
   strategy?: StrategyId;
   active?: boolean;
   favorited: boolean;
@@ -1235,7 +1310,16 @@ function GameRow({
   const a = row.analysis;
   const plan = liveRow?.tradePlan ?? a.tradePlan;
   const over = resolveOverLimite(row, liveRow);
-  const live = liveRow?.live ?? null;
+  const live =
+    liveRow?.live ??
+    (enrichedLive
+      ? {
+          scoreLabel: enrichedLive.scoreLabel,
+          minute: enrichedLive.minute,
+          status: enrichedLive.status,
+          stillPossible33: true,
+        }
+      : null);
   const isLive = Boolean(live);
   const status =
     strategy === "over-limite"

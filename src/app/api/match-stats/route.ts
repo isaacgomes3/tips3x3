@@ -12,6 +12,14 @@ type CacheEntry = { at: number; body: unknown };
 const cache = new Map<string, CacheEntry>();
 const TTL_MS = 12_000;
 
+function parseMinuteFromLabel(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  if (Number.isFinite(n)) return Math.max(0, Math.floor(n));
+  const m = String(value).match(/(\d+)/);
+  return m ? Number(m[1]) : null;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -98,6 +106,10 @@ export async function GET(request: Request) {
         ? `${inplay.score.home.score}-${inplay.score.away.score}`
         : fotmob?.scoreLabel;
 
+    const fotmobMinute =
+      parseMinuteFromLabel(fotmob?.status) ??
+      parseMinuteFromLabel(fotmob?.rich?.status ?? null);
+
     const body = {
       found: Boolean(inplay || fotmob),
       source: inplay ? (fotmob ? "bolsa+fotmob" : "bolsa") : fotmob ? "fotmob" : null,
@@ -105,8 +117,12 @@ export async function GET(request: Request) {
       home: homeName || home,
       away: awayName || away,
       scoreLabel: scoreLabel ?? null,
-      minute: inplay?.timeElapsed ?? inplay?.elapsedRegularTime ?? null,
-      status: inplay?.status ?? fotmob?.status ?? null,
+      minute:
+        inplay?.timeElapsed ??
+        inplay?.elapsedRegularTime ??
+        fotmobMinute ??
+        null,
+      status: inplay?.status ?? fotmob?.status ?? fotmob?.rich?.status ?? null,
       matchStatus: inplay?.inPlayMatchStatus ?? null,
       stats: merged,
       timeline: (inplay?.updateDetails ?? []).map((u) => ({
