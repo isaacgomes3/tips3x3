@@ -92,6 +92,7 @@ export async function GET(request: Request) {
                 teamForm,
                 over25Back: analysis.over25,
                 matchOdds: analysis.matchOdds,
+                totalGoals: toLiveSnapshot(ip).totalGoals,
                 favoriteSide:
                   (analysis.matchOdds.home.back ?? 99) <=
                   (analysis.matchOdds.away.back ?? 99)
@@ -103,7 +104,12 @@ export async function GET(request: Request) {
             }
 
             const confirmation = confirmLivePattern(analysis, ip);
-            const alerts = [...confirmation.alerts];
+            // A confirmação pré-live serve apenas para monitoramento. A entrada
+            // só é liberada pelo gate completo do plano (fluidez + correção +
+            // placar + risco), evitando sinais divergentes.
+            const alerts = confirmation.alerts.filter(
+              (alert) => alert.severity !== "entry",
+            );
 
             if (tradePlan.entryReady) {
               alerts.unshift({
@@ -129,11 +135,21 @@ export async function GET(request: Request) {
               });
             }
 
+            if (overLimite.entryReady) {
+              alerts.unshift({
+                id: `${analysis.eventId}-over-entry`,
+                severity: "entry" as const,
+                title: "ENTRADA LAY · OVER 2.5",
+                message: `${analysis.eventName}: ${overLimite.summary}`,
+                at: new Date().toISOString(),
+              });
+            }
+
             return {
               ...confirmation,
               live: confirmation.live ?? toLiveSnapshot(ip),
               alerts,
-              confirmed: confirmation.confirmed || tradePlan.entryReady,
+              confirmed: tradePlan.entryReady,
               mexchangeUrl: mexchangeEventUrl(event.id, analysis.marketId),
               tradePlan,
               analysis: {

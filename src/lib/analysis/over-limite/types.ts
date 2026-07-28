@@ -24,6 +24,8 @@ export interface OverIndicator {
 
 export interface OverLimiteSnapshot {
   line: number;
+  /** O mercado já foi resolvido pelo placar live e não pode indicar entrada. */
+  settled: boolean;
   marketId?: string;
   runnerId?: string;
   layOdds: number | null;

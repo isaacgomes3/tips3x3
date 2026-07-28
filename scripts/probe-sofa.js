@@ -1,6 +1,5 @@
-﻿const { gotScraping } = require("got-scraping");
-
-(async () => {
+﻿(async () => {
+  const { gotScraping } = await import("got-scraping");
   const url = "https://api.sofascore.com/api/v1/sport/football/events/live";
   try {
     const res = await gotScraping({

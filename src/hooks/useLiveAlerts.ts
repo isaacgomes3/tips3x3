@@ -41,6 +41,11 @@ type LiveScoreRow = {
     entryReady?: boolean;
     layOdds?: number | null;
   };
+  overLimite?: {
+    entryReady?: boolean;
+    line?: number;
+    layOdds?: number | null;
+  };
   confirmed?: boolean;
   mexchangeUrl?: string;
 };
@@ -308,11 +313,12 @@ export function useLiveAlerts(
         }
       }
 
-      // ENTRAR — alerta na 1ª vez que fica pronto (e de novo se sair e voltar)
-      const ready = Boolean(row.tradePlan?.entryReady || row.confirmed);
-      if (ready) {
-        if (warm && !enterNotifiedRef.current.has(id)) {
-          enterNotifiedRef.current.add(id);
+      // ENTRAR Lay 3-3 — apenas pelo gate estrito do plano.
+      const layEntryKey = `${id}:lay-3x3`;
+      const layReady = Boolean(row.tradePlan?.entryReady);
+      if (layReady) {
+        if (warm && !enterNotifiedRef.current.has(layEntryKey)) {
+          enterNotifiedRef.current.add(layEntryKey);
           const minute =
             row.live?.minute != null
               ? ` @ ${Math.floor(row.live.minute)}′`
@@ -331,8 +337,38 @@ export function useLiveAlerts(
           sendToExtension(row);
         }
       } else {
-        enterNotifiedRef.current.delete(id);
+        enterNotifiedRef.current.delete(layEntryKey);
         autoSentRef.current.delete(id);
+      }
+
+      // ENTRAR Lay Over 2.5 — gate próprio: correção, ticks, liquidez,
+      // gap, faixa de odd e momento sem pressão desfavorável.
+      const overEntryKey = `${id}:over-2-5`;
+      const totalGoals = parseGoals(label);
+      const overReady = Boolean(
+        row.overLimite?.entryReady &&
+          (totalGoals == null || totalGoals <= 2),
+      );
+      if (overReady) {
+        if (warm && !enterNotifiedRef.current.has(overEntryKey)) {
+          enterNotifiedRef.current.add(overEntryKey);
+          const minute =
+            row.live?.minute != null
+              ? ` @ ${Math.floor(row.live.minute)}′`
+              : "";
+          const overLine = row.overLimite?.line ?? 2.5;
+          const layOdds = Number(row.overLimite?.layOdds ?? 0);
+          pushAlert({
+            kind: "enter",
+            title: `ENTRAR · LAY OVER ${overLine} · ${name}`,
+            body: label
+              ? `Indicação de entrada · ${label}${minute}${layOdds > 1 ? ` · lay x${layOdds}` : ""}`
+              : `Indicação de entrada${minute}${layOdds > 1 ? ` · lay x${layOdds}` : ""}`,
+            tag: `tips3x3-enter-over-${id}-${Date.now()}`,
+          });
+        }
+      } else {
+        enterNotifiedRef.current.delete(overEntryKey);
       }
     }
 
@@ -346,10 +382,13 @@ export function useLiveAlerts(
       void unlockAlertAudio();
       const rows = liveRows ?? [];
       for (const row of rows) {
-        const ready = Boolean(row.tradePlan?.entryReady || row.confirmed);
         const id = row.analysis.eventId;
-        if (ready && !enterNotifiedRef.current.has(id)) {
-          enterNotifiedRef.current.add(id);
+        const layEntryKey = `${id}:lay-3x3`;
+        if (
+          row.tradePlan?.entryReady &&
+          !enterNotifiedRef.current.has(layEntryKey)
+        ) {
+          enterNotifiedRef.current.add(layEntryKey);
           const name = matchName(favorites, row);
           const label = row.live?.scoreLabel;
           pushAlert({
@@ -361,6 +400,27 @@ export function useLiveAlerts(
             tag: `tips3x3-enter-${id}-vis`,
           });
           sendToExtension(row);
+        }
+
+        const overEntryKey = `${id}:over-2-5`;
+        const totalGoals = parseGoals(row.live?.scoreLabel);
+        if (
+          row.overLimite?.entryReady &&
+          (totalGoals == null || totalGoals <= 2) &&
+          !enterNotifiedRef.current.has(overEntryKey)
+        ) {
+          enterNotifiedRef.current.add(overEntryKey);
+          const name = matchName(favorites, row);
+          const label = row.live?.scoreLabel;
+          const overLine = row.overLimite.line ?? 2.5;
+          pushAlert({
+            kind: "enter",
+            title: `ENTRAR · LAY OVER ${overLine} · ${name}`,
+            body: label
+              ? `Indicação de entrada · ${label}`
+              : "Indicação de entrada",
+            tag: `tips3x3-enter-over-${id}-vis`,
+          });
         }
       }
     };

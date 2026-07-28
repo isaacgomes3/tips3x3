@@ -278,6 +278,7 @@ export function buildOverLimiteSnapshot(opts: {
   favoritePressureBias?: number | null;
   homeBias?: number | null;
   awayBias?: number | null;
+  totalGoals?: number | null;
   matchOdds?: {
     home?: { back?: number | null };
     away?: { back?: number | null };
@@ -285,6 +286,11 @@ export function buildOverLimiteSnapshot(opts: {
 }): OverLimiteSnapshot {
   const points = opts.historyPoints ?? [];
   const layLiquidity = Number(opts.layLiquidity ?? 0) || 0;
+  const totalGoals =
+    opts.totalGoals != null && Number.isFinite(opts.totalGoals)
+      ? opts.totalGoals
+      : null;
+  const settled = totalGoals != null && totalGoals > OVER_LIMITE.line;
 
   const fluidity = points.length
     ? analyzeFluidity(points, { ...OVER_LIMITE.fluidity })
@@ -316,28 +322,31 @@ export function buildOverLimiteSnapshot(opts: {
 
   // Gate: correção + book justo. Viés Over pré-live e momento são reforço, não bloqueio.
   const criticalIds = new Set(["correction", "ticks", "liquidity", "gap", "oddsBand"]);
-  const goodCount = indicators.filter((i) => i.good).length;
+  const goodCount = settled ? 0 : indicators.filter((i) => i.good).length;
   const criticalOk = indicators
     .filter((i) => criticalIds.has(i.id))
     .every((i) => i.good);
   const momentum = indicators.find((i) => i.id === "momentum");
   // Pressão alta (bad) atrasa entrada; idle/good libera
   const momentumOk = !momentum || momentum.tone !== "bad";
-  const entryReady = criticalOk && momentumOk;
+  const entryReady = !settled && criticalOk && momentumOk;
 
-  const summary = entryReady
+  const summary = settled
+    ? `Over ${OVER_LIMITE.line} já atingido (${totalGoals} gols) — mercado encerrado para entrada.`
+    : entryReady
     ? `Lay Over ${OVER_LIMITE.line} · correção/desajuste · ${goodCount}/${indicators.length} ok`
     : `Lay Over ${OVER_LIMITE.line} · ${goodCount}/${indicators.length} ok — caçar correção`;
 
   return {
     line: OVER_LIMITE.line,
+    settled,
     marketId: opts.marketId,
     runnerId: opts.runnerId,
     layOdds: opts.layOdds,
     backOdds: opts.backOdds,
     layLiquidity,
     gapTicks: gapTicks(opts.backOdds, opts.layOdds),
-    indicators,
+    indicators: settled ? [] : indicators,
     goodCount,
     entryReady,
     summary,

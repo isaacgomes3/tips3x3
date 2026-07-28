@@ -1,4 +1,4 @@
-# Ecosystem PM2 (opcional — deploy-remote já usa `pm2 start npm`)
+// Ecosystem PM2 (opcional — deploy-remote já usa `pm2 start npm`)
 module.exports = {
   apps: [
     {

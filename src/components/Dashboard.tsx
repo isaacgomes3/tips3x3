@@ -25,6 +25,7 @@ import { BarChart3 } from "lucide-react";
 type OverIndicatorTone = "good" | "warn" | "bad" | "idle";
 type OverLimiteSnapshot = {
   line: number;
+  settled: boolean;
   layOdds: number | null;
   backOdds: number | null;
   layLiquidity: number;
@@ -1323,7 +1324,9 @@ function GameRow({
   const isLive = Boolean(live);
   const status =
     strategy === "over-limite"
-      ? over?.entryReady
+      ? over?.settled
+        ? "ENCERRADO"
+        : over?.entryReady
         ? "ENTRAR"
         : over && over.goodCount >= 4
           ? "ALINHANDO"
