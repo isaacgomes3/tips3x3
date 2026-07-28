@@ -1337,9 +1337,11 @@ function GameRow({
   const pulse =
     status === "ENTRAR"
       ? "is-pulse-entrar"
-      : status === "CORRIGINDO" || status === "ALINHANDO"
+      : strategy !== "over-limite" &&
+          (status === "CORRIGINDO" || status === "ALINHANDO")
         ? "is-pulse-corrigindo"
         : "";
+  const showStatus = strategy !== "over-limite" || status === "ENTRAR";
 
   return (
     <div
@@ -1389,7 +1391,9 @@ function GameRow({
       <div
         className={`match-card-status ${strategy === "over-limite" ? "is-over-limite" : ""}`}
       >
-        <span className={`status-chip status-${statusKey}`}>{status}</span>
+        {showStatus && (
+          <span className={`status-chip status-${statusKey}`}>{status}</span>
+        )}
       </div>
 
       <div className="match-card-odds">

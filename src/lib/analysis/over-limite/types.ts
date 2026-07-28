@@ -22,6 +22,20 @@ export interface OverIndicator {
   value?: number | null;
 }
 
+export interface OverExitPlan {
+  /** Odd Lay usada como referência: "se entrar agora". */
+  entryLayOdds: number;
+  targetBackOdds: number;
+  targetProfitPct: number;
+  ticksPerMin: number;
+  targetTicks: number;
+  etaMinutes: number | null;
+  minute: number | null;
+  favoritePressureBias: number | null;
+  confidence: "high" | "medium" | "low";
+  summary: string;
+}
+
 export interface OverLimiteSnapshot {
   line: number;
   /** O mercado já foi resolvido pelo placar live e não pode indicar entrada. */
@@ -37,6 +51,8 @@ export interface OverLimiteSnapshot {
   goodCount: number;
   /** Pronto para considerar entrada (gate de correção/desajuste) */
   entryReady: boolean;
+  /** Plano estimado de saída Back, recalculado para a odd Lay atual. */
+  exitPlan: OverExitPlan | null;
   summary: string;
 }
 

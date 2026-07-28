@@ -6,10 +6,11 @@ import {
 } from "@/lib/analysis/correction";
 import { analyzeFluidity } from "@/lib/analysis/fluidity";
 import { OVER_LIMITE } from "./config";
-import { gapTicks, ticksBetween } from "./ticks";
+import { gapTicks, tickSizeAt, ticksBetween } from "./ticks";
 import {
   OVER_INDICATOR_META,
   type OverIndicator,
+  type OverExitPlan,
   type OverLimiteSnapshot,
   type IndicatorTone,
 } from "./types";
@@ -265,6 +266,91 @@ export function buildOddsBandIndicator(layOdds: number | null): OverIndicator {
   };
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function nextTradableOdd(from: number, target: number) {
+  let odd = from;
+  let steps = 0;
+  while (odd < target - 1e-9 && steps < 5000) {
+    odd += tickSizeAt(odd);
+    steps += 1;
+  }
+  return Number(odd.toFixed(2));
+}
+
+function buildExitPlan(opts: {
+  layOdds: number | null;
+  historyPoints: OddsHistoryPoint[];
+  minute?: number | null;
+  favoritePressureBias?: number | null;
+}): OverExitPlan | null {
+  const layOdds = opts.layOdds;
+  if (layOdds == null || !(layOdds > 1)) return null;
+
+  const { ticksPerMin } = measureFavorTicksPerMin(opts.historyPoints);
+  const speedFactor = clamp(
+    ticksPerMin / OVER_LIMITE.exit.referenceTicksPerMin,
+    0.5,
+    1,
+  );
+  const minute = opts.minute ?? null;
+  const minuteFactor =
+    minute == null ? 0.85 : minute <= 55 ? 1 : minute <= 65 ? 0.88 : minute <= 70 ? 0.72 : 0.55;
+  const pressure = opts.favoritePressureBias ?? null;
+  const pressureFactor =
+    pressure == null
+      ? 0.9
+      : pressure <= OVER_LIMITE.maxFavoritePressureBias
+        ? 1
+        : pressure <= 0.4
+          ? 0.82
+          : 0.65;
+  const targetProfitPct = clamp(
+    OVER_LIMITE.exit.targetProfitPct * speedFactor * minuteFactor * pressureFactor,
+    OVER_LIMITE.exit.minProfitPct,
+    OVER_LIMITE.exit.targetProfitPct,
+  );
+  const denominator = 1 - targetProfitPct * (layOdds - 1);
+  if (denominator <= 0.05) return null;
+
+  const rawTarget = layOdds / denominator;
+  const targetBackOdds = nextTradableOdd(layOdds, rawTarget);
+  const targetTicks = ticksBetween(layOdds, targetBackOdds);
+  const etaMinutes =
+    ticksPerMin > 0 && Number.isFinite(targetTicks)
+      ? targetTicks / ticksPerMin
+      : null;
+  const confidence =
+    ticksPerMin >= OVER_LIMITE.exit.referenceTicksPerMin &&
+    minute != null &&
+    minute >= 15 &&
+    minute <= 55 &&
+    pressure != null &&
+    pressure <= OVER_LIMITE.maxFavoritePressureBias
+      ? "high"
+      : ticksPerMin >= 0.5 && minute != null && minute <= 70
+        ? "medium"
+        : "low";
+  const etaLabel = etaMinutes != null ? ` · ETA ~${etaMinutes.toFixed(0)} min` : "";
+  const pressureLabel =
+    pressure == null ? "pressão indisponível" : `pressão fav. ${pressure.toFixed(2)}`;
+
+  return {
+    entryLayOdds: layOdds,
+    targetBackOdds,
+    targetProfitPct,
+    ticksPerMin,
+    targetTicks: Number.isFinite(targetTicks) ? targetTicks : 0,
+    etaMinutes,
+    minute,
+    favoritePressureBias: pressure,
+    confidence,
+    summary: `Back alvo x${targetBackOdds.toFixed(2)} · ${targetTicks.toFixed(0)} ticks · ${ticksPerMin.toFixed(1)} ticks/min · ${pressureLabel}${etaLabel}`,
+  };
+}
+
 export function buildOverLimiteSnapshot(opts: {
   layOdds: number | null;
   backOdds: number | null;
@@ -279,6 +365,7 @@ export function buildOverLimiteSnapshot(opts: {
   homeBias?: number | null;
   awayBias?: number | null;
   totalGoals?: number | null;
+  minute?: number | null;
   matchOdds?: {
     home?: { back?: number | null };
     away?: { back?: number | null };
@@ -330,6 +417,14 @@ export function buildOverLimiteSnapshot(opts: {
   // Pressão alta (bad) atrasa entrada; idle/good libera
   const momentumOk = !momentum || momentum.tone !== "bad";
   const entryReady = !settled && criticalOk && momentumOk;
+  const exitPlan = settled
+    ? null
+    : buildExitPlan({
+        layOdds: opts.layOdds,
+        historyPoints: points,
+        minute: opts.minute,
+        favoritePressureBias: opts.favoritePressureBias,
+      });
 
   const summary = settled
     ? `Over ${OVER_LIMITE.line} já atingido (${totalGoals} gols) — mercado encerrado para entrada.`
@@ -349,6 +444,7 @@ export function buildOverLimiteSnapshot(opts: {
     indicators: settled ? [] : indicators,
     goodCount,
     entryReady,
+    exitPlan,
     summary,
   };
 }

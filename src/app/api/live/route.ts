@@ -12,8 +12,39 @@ import {
 import { parseProfitPctQuery } from "@/lib/betbra/config";
 import { getOddsHistory } from "@/lib/betbra/odds-history";
 import { analyzeTeamForm } from "@/lib/fotmob/form";
+import { getFotmobMatchIntel } from "@/lib/fotmob/intel";
 
 export const dynamic = "force-dynamic";
+
+const pressureCache = new Map<string, { at: number; value: number | null }>();
+const PRESSURE_TTL_MS = 45_000;
+
+async function getFavoritePressure(opts: {
+  home: string;
+  away: string;
+  start: string;
+  favoriteSide: "home" | "away";
+}) {
+  const key = `${opts.home}|${opts.away}|${opts.start}`.toLowerCase();
+  const cached = pressureCache.get(key);
+  if (cached && Date.now() - cached.at < PRESSURE_TTL_MS) return cached.value;
+
+  const intel = await Promise.race([
+    getFotmobMatchIntel(opts).catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 4_000)),
+  ]);
+  const value =
+    intel == null
+      ? null
+      : Math.max(
+          0,
+          opts.favoriteSide === "home"
+            ? intel.pressure.homeBias - intel.pressure.awayBias
+            : intel.pressure.awayBias - intel.pressure.homeBias,
+        );
+  pressureCache.set(key, { at: Date.now(), value });
+  return value;
+}
 
 export async function GET(request: Request) {
   try {
@@ -72,6 +103,11 @@ export async function GET(request: Request) {
 
             try {
               const teamForm = await teamFormPromise;
+              const favoriteSide =
+                (analysis.matchOdds.home.back ?? 99) <=
+                (analysis.matchOdds.away.back ?? 99)
+                  ? "home"
+                  : "away";
               let overHistory: Awaited<ReturnType<typeof getOddsHistory>> | null =
                 null;
               if (overMkt.runnerId) {
@@ -82,6 +118,15 @@ export async function GET(request: Request) {
                   limit: 120,
                 }).catch(() => null);
               }
+              const favoritePressureBias =
+                overMkt.layOdds != null
+                  ? await getFavoritePressure({
+                      home: analysis.home,
+                      away: analysis.away,
+                      start: analysis.start,
+                      favoriteSide,
+                    })
+                  : null;
               overLimite = buildOverLimiteSnapshot({
                 layOdds: overMkt.layOdds,
                 backOdds: overMkt.backOdds,
@@ -93,11 +138,9 @@ export async function GET(request: Request) {
                 over25Back: analysis.over25,
                 matchOdds: analysis.matchOdds,
                 totalGoals: toLiveSnapshot(ip).totalGoals,
-                favoriteSide:
-                  (analysis.matchOdds.home.back ?? 99) <=
-                  (analysis.matchOdds.away.back ?? 99)
-                    ? "home"
-                    : "away",
+                minute: toLiveSnapshot(ip).minute,
+                favoriteSide,
+                favoritePressureBias,
               });
             } catch {
               // mantém overLimite base

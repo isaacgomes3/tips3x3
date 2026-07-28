@@ -37,6 +37,12 @@ export const OVER_LIMITE = {
   minProjectedGoalsForBias: 2.2,
   /** Pressão do favorito alta = risco iminente no timing do lay */
   maxFavoritePressureBias: 0.22,
+  /** Saída Back projetada a partir da odd Lay de entrada. */
+  exit: {
+    targetProfitPct: 0.008,
+    minProfitPct: 0.003,
+    referenceTicksPerMin: 1.2,
+  },
 } as const;
 
 export type OverLimiteConfig = typeof OVER_LIMITE;
