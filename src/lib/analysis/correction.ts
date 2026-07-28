@@ -474,6 +474,11 @@ export function analyzeCorrection(opts: {
     home?: { back?: number | null };
     away?: { back?: number | null };
   };
+  shockOpts?: {
+    minDropPct?: number;
+    maxDropMinutes?: number;
+    lookbackSlope?: number;
+  };
   crashOpts?: {
     highLayPeakMin?: number;
     minDropPct?: number;
@@ -485,6 +490,7 @@ export function analyzeCorrection(opts: {
   const underdogGoals = detectUnderdogGoals(opts.inplay, favoriteSide);
   const { shocks, episodes, avgCorrectionMinutes } = detectShocksAndCorrections(
     opts.historyPoints,
+    opts.shockOpts,
   );
 
   const latestEpisode = episodes.at(-1) ?? null;

@@ -109,23 +109,69 @@ export function extractBttsYes(event: BetBraEvent) {
 }
 
 export function extractOver25(event: BetBraEvent) {
+  return extractOverMarket(event, 2.5).backOdds;
+}
+
+/** Mercado Total Over {line} com book back/lay (base Lay over limite). */
+export function extractOverMarket(event: BetBraEvent, line = 2.5) {
+  const lineRe = String(line).replace(".", "\\.");
+  const nameRe = new RegExp(`over\\s*${lineRe}|mais\\s*de\\s*${lineRe}`, "i");
   const totals = (event.markets ?? []).filter(
     (m) => (m["name-original"] ?? m.name) === "Total",
   );
 
   for (const market of totals) {
-    const over = market.runners?.find((r) =>
-      /over\s*2\.5|mais\s*de\s*2\.5/i.test(r.name),
-    );
-    if (over) {
-      return (
-        bestPrice(over.prices, "back")?.odds ??
-        over["last-matched-odds"] ??
-        null
-      );
-    }
+    const runner = market.runners?.find((r) => nameRe.test(r.name));
+    if (!runner) continue;
+    const lay = bestPrice(runner.prices, "lay");
+    const back = bestPrice(runner.prices, "back");
+    return {
+      line,
+      market,
+      runner,
+      lay,
+      back,
+      layOdds: lay?.odds ?? null,
+      backOdds:
+        back?.odds ??
+        runner["last-matched-odds"] ??
+        null,
+      quotes: {
+        back: {
+          odds: back?.odds ?? runner["last-matched-odds"] ?? null,
+          amount: back?.["available-amount"] ?? 0,
+        },
+        lay: {
+          odds: lay?.odds ?? null,
+          amount: lay?.["available-amount"] ?? 0,
+        },
+        lastMatched: runner["last-matched-odds"] ?? null,
+      },
+      liquidity: lay?.["available-amount"] ?? 0,
+      volume: runner.volume ?? 0,
+      marketId: market.id,
+      runnerId: runner.id,
+    };
   }
-  return null;
+
+  return {
+    line,
+    market: undefined,
+    runner: undefined,
+    lay: undefined,
+    back: undefined,
+    layOdds: null as number | null,
+    backOdds: null as number | null,
+    quotes: {
+      back: { odds: null as number | null, amount: 0 },
+      lay: { odds: null as number | null, amount: 0 },
+      lastMatched: null as number | null,
+    },
+    liquidity: 0,
+    volume: 0,
+    marketId: undefined as string | undefined,
+    runnerId: undefined as string | undefined,
+  };
 }
 
 export function splitTeams(eventName: string): { home: string; away: string } {

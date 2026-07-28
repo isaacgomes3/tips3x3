@@ -2,8 +2,8 @@ export const BETBRA = {
   origin: "https://betbra.bet.br",
   /** Origin/Referer das chamadas à API do exchange. */
   mexchangeWeb: "https://mexchange.betbra.bet.br",
-  /** Link “Abrir” no front — Bolsa de Aposta (mesmo event/market id). */
-  openExchangeWeb: "https://bolsadeaposta.bet.br/b",
+  /** Link “Abrir” no front — BetBra Mexchange (mesmo event/market id). */
+  openExchangeWeb: "https://betbra.bet.br/b",
   clientApi: "https://betbra.bet.br/client/api",
   mexchangeApi: "https://mexchange-api.betbra.bet.br/api",
   sportIds: {
@@ -40,9 +40,15 @@ export function getPreliveMinScore() {
  * Prefere lays baixos (ex. 22–32): gap lay→back menor e risco menor.
  * Lay alto (perto de 50) exige odd quase dobrar e liability bem maior.
  */
-export function getTradeConfig() {
+export function getTradeConfig(overrides?: { targetProfitPct?: number }) {
+  const fromEnv = Number(process.env.TARGET_PROFIT_PCT ?? 0.01);
+  const override = overrides?.targetProfitPct;
+  const targetProfitPct =
+    override != null && Number.isFinite(override) && override > 0
+      ? override
+      : fromEnv;
   return {
-    targetProfitPct: Number(process.env.TARGET_PROFIT_PCT ?? 0.01),
+    targetProfitPct,
     referenceStake: Number(process.env.REFERENCE_LAY_STAKE ?? 10),
     minOscillationPct: Number(process.env.MIN_OSCILLATION_PCT ?? 0.15),
     oscillationLookback: Number(process.env.OSCILLATION_LOOKBACK ?? 8),
@@ -55,4 +61,12 @@ export function getTradeConfig() {
     /** Entrada rápida só no início da correção (recuperação ainda baixa). */
     crashMaxRecoveryPct: Number(process.env.CRASH_MAX_RECOVERY_PCT ?? 0.45),
   };
+}
+
+/** Query `profitPct=0.1` = 0,1% → decimal 0.001. */
+export function parseProfitPctQuery(raw: string | null | undefined): number | undefined {
+  if (raw == null || raw === "") return undefined;
+  const n = Number(String(raw).replace(",", "."));
+  if (!Number.isFinite(n) || n < 0.1 || n > 100) return undefined;
+  return n / 100;
 }

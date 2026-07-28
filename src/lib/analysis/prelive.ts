@@ -5,8 +5,10 @@ import {
   extractLay3x3,
   extractMatchOdds,
   extractOver25,
+  extractOverMarket,
   splitTeams,
 } from "./markets";
+import { buildOverLimiteSnapshot, type OverLimiteSnapshot } from "./over-limite";
 import { buildTradePlan, type TradePlan } from "./trade-plan";
 
 export type SignalLevel = "strong" | "ok" | "weak" | "fail";
@@ -42,6 +44,8 @@ export interface PreLiveAnalysis {
   matchOdds: ReturnType<typeof extractMatchOdds>;
   bttsYes: number | null;
   over25: number | null;
+  /** Snapshot Lay over limite (indicadores + ícones) */
+  overLimite: OverLimiteSnapshot;
   signals: AnalysisSignal[];
   score: number;
   idealOdds: boolean;
@@ -104,7 +108,10 @@ function buildSummary(opts: {
   return `Fora da janela (${windowMin}–${windowMax}). Preferir lay ${windowMin}–${preferredMax} (menos risco, correção ~1% mais rápida).`;
 }
 
-export function analyzePreLive(event: BetBraEvent): PreLiveAnalysis {
+export function analyzePreLive(
+  event: BetBraEvent,
+  opts?: { targetProfitPct?: number },
+): PreLiveAnalysis {
   const window = getLayOddsWindow();
   const minScore = getPreliveMinScore();
   const { home, away } = splitTeams(event.name);
@@ -112,6 +119,7 @@ export function analyzePreLive(event: BetBraEvent): PreLiveAnalysis {
   const matchOdds = extractMatchOdds(event);
   const bttsYes = extractBttsYes(event);
   const over25 = extractOver25(event);
+  const overMkt = extractOverMarket(event, 2.5);
   const competition = event["meta-tags"]?.find((t) => t.type === "COMPETITION")
     ?.name;
 
@@ -233,6 +241,19 @@ export function analyzePreLive(event: BetBraEvent): PreLiveAnalysis {
   const tradePlan = buildTradePlan({
     layOdds: lay3x3.referenceOdds,
     matchOdds,
+    targetProfitPct: opts?.targetProfitPct,
+  });
+
+  const overLimite = buildOverLimiteSnapshot({
+    layOdds: overMkt.layOdds,
+    backOdds: overMkt.backOdds,
+    layLiquidity: overMkt.liquidity,
+    marketId: overMkt.marketId,
+    runnerId: overMkt.runnerId,
+    over25Back: over25,
+    matchOdds,
+    favoriteSide:
+      (matchOdds.home.back ?? 99) <= (matchOdds.away.back ?? 99) ? "home" : "away",
   });
 
   const summaryText = buildSummary({
@@ -264,6 +285,7 @@ export function analyzePreLive(event: BetBraEvent): PreLiveAnalysis {
     matchOdds,
     bttsYes,
     over25,
+    overLimite,
     signals,
     score,
     idealOdds,

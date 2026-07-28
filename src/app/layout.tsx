@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { Inter, Rajdhani, Space_Grotesk } from "next/font/google";
+import { Inter, Rajdhani, Sora } from "next/font/google";
 import "./globals.css";
 
-const spaceGrotesk = Space_Grotesk({
+const sora = Sora({
   subsets: ["latin"],
   variable: "--font-display-loaded",
-  weight: ["500", "600", "700"],
+  weight: ["600", "700", "800"],
 });
 
 const inter = Inter({
@@ -39,7 +39,7 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
-      className={`${spaceGrotesk.variable} ${inter.variable} ${rajdhani.variable} h-full antialiased`}
+      className={`${sora.variable} ${inter.variable} ${rajdhani.variable} h-full antialiased`}
     >
       <body className="min-h-full">{children}</body>
     </html>

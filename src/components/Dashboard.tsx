@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CollapsePanel } from "@/components/CollapsePanel";
 import { FavoriteStarButton } from "@/components/FavoriteStarButton";
 import { MatchIntelCard } from "@/components/MatchIntelCard";
@@ -9,10 +10,37 @@ import { OddsQuoteButtons } from "@/components/OddsQuoteButtons";
 import { OddsVolumeChart } from "@/components/OddsVolumeChart";
 import { LiveAlertToasts } from "@/components/LiveAlertToasts";
 import { CentralGestao } from "@/components/CentralGestao";
+import { TradingTerminal } from "@/components/terminal/TradingTerminal";
+import { useBankrollData } from "@/hooks/useBankrollData";
 import { MatchStatsDrawer, type StatsTarget } from "@/components/MatchStatsDrawer";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useLiveAlerts } from "@/hooks/useLiveAlerts";
+import {
+  getTargetProfitPctPoints,
+  setTargetProfitPctPoints,
+} from "@/lib/panel-settings";
 import { BarChart3 } from "lucide-react";
+
+type OverIndicatorTone = "good" | "warn" | "bad" | "idle";
+type OverLimiteSnapshot = {
+  line: number;
+  layOdds: number | null;
+  backOdds: number | null;
+  layLiquidity: number;
+  gapTicks: number | null;
+  goodCount: number;
+  entryReady: boolean;
+  summary: string;
+  indicators: Array<{
+    id: string;
+    label: string;
+    icon: string;
+    tone: OverIndicatorTone;
+    good: boolean;
+    detail: string;
+    value?: number | null;
+  }>;
+};
 
 type TradePlan = {
   layOdds: number | null;
@@ -101,6 +129,7 @@ type OpportunityPayload = {
       volume3x3: number;
       bttsYes: number | null;
       over25: number | null;
+      overLimite?: OverLimiteSnapshot;
       score: number;
       idealOdds: boolean;
       watchlist: boolean;
@@ -145,6 +174,7 @@ type LivePayload = {
     mexchangeUrl: string;
     reasons: string[];
     tradePlan?: TradePlan;
+    overLimite?: OverLimiteSnapshot;
     live: null | {
       scoreLabel: string;
       minute: number | null;
@@ -178,12 +208,42 @@ type LivePayload = {
       signals?: OpportunityRow["analysis"]["signals"];
       matchOdds?: OpportunityRow["analysis"]["matchOdds"];
       tradePlan?: TradePlan;
+      overLimite?: OverLimiteSnapshot;
     };
   }>;
   error?: string;
 };
 
-type NavView = "jogos" | "live" | "alertas" | "gestao" | "evento";
+type NavView = "dashboard" | "jogos" | "live" | "alertas" | "gestao" | "evento" | "config";
+type StrategyId = "lay-3x3" | "over-limite";
+
+function isNavView(v: string | null): v is NavView {
+  return (
+    v === "dashboard" ||
+    v === "jogos" ||
+    v === "live" ||
+    v === "alertas" ||
+    v === "gestao" ||
+    v === "evento" ||
+    v === "config"
+  );
+}
+
+function strategyFilterReady(strategy: StrategyId): boolean {
+  return strategy === "lay-3x3" || strategy === "over-limite";
+}
+
+function resolveOverLimite(
+  row: OpportunityRow,
+  liveRow?: LivePayload["rows"][number],
+): OverLimiteSnapshot | null {
+  return (
+    liveRow?.overLimite ??
+    liveRow?.analysis?.overLimite ??
+    row.analysis.overLimite ??
+    null
+  );
+}
 
 function formatKickTime(iso: string) {
   try {
@@ -265,39 +325,61 @@ function tradeStatus(plan?: TradePlan | null) {
 }
 
 export function Dashboard() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [opps, setOpps] = useState<OpportunityPayload | null>(null);
   const [live, setLive] = useState<LivePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [onlyIdeal, setOnlyIdeal] = useState(false);
   const [onlyLive, setOnlyLive] = useState(false);
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [query, setQuery] = useState("");
   const [tick, setTick] = useState(0);
-  const [view, setView] = useState<NavView>("jogos");
+  const [view, setView] = useState<NavView>("dashboard");
+  const [strategy, setStrategy] = useState<StrategyId>("lay-3x3");
   const [statsTarget, setStatsTarget] = useState<StatsTarget | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [topNavOpen, setTopNavOpen] = useState(false);
+  const [targetProfitPct, setTargetProfitPct] = useState(1);
+  const [profitDraft, setProfitDraft] = useState("1");
+  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const bankroll = useBankrollData();
+
+  useEffect(() => {
+    if (!searchParams.get("view")) {
+      router.replace("/app?view=dashboard", { scroll: false });
+    }
+  }, [searchParams, router]);
+
+  useEffect(() => {
+    const v = searchParams.get("view");
+    if (isNavView(v)) setView(v);
+  }, [searchParams]);
+
+  useEffect(() => {
+    setMounted(true);
+    setLastSyncAt(Date.now());
+  }, []);
   const { favorites, favoriteIds, toggleFavorite, isFavorite } = useFavorites();
 
   useEffect(() => {
-    if (!sidebarOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const p = getTargetProfitPctPoints();
+    setTargetProfitPct(p);
+    setProfitDraft(String(p).replace(".", ","));
+  }, []);
+
+  useEffect(() => {
+    if (!topNavOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSidebarOpen(false);
+      if (e.key === "Escape") setTopNavOpen(false);
     };
     window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prev;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [sidebarOpen]);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [topNavOpen]);
 
-  const { toasts, dismiss, alertsArmed, armAlerts } = useLiveAlerts(
-    favorites,
-    live?.rows,
-  );
+  const { toasts, dismiss, alertsArmed, armAlerts, extAutoSend, setExtAutoSend } =
+    useLiveAlerts(favorites, live?.rows);
   const [detailOpen, setDetailOpen] = useState<Record<string, boolean>>({
     trade: true,
     moment: true,
@@ -310,9 +392,10 @@ export function Dashboard() {
   const load = useCallback(async () => {
     setError(null);
     try {
+      const profitQ = `&profitPct=${encodeURIComponent(String(targetProfitPct))}`;
       const [oRes, lRes] = await Promise.all([
-        fetch(`/api/opportunities?limit=40${onlyIdeal ? "&ideal=1" : ""}`),
-        fetch("/api/live?limit=40"),
+        fetch(`/api/opportunities?limit=40${profitQ}`),
+        fetch(`/api/live?limit=40${profitQ}`),
       ]);
       const oJson = (await oRes.json()) as OpportunityPayload;
       const lJson = (await lRes.json()) as LivePayload;
@@ -320,12 +403,13 @@ export function Dashboard() {
       if (!lRes.ok) throw new Error(lJson.error || "Falha ao carregar live");
       setOpps(oJson);
       setLive(lJson);
+      setLastSyncAt(Date.now());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao atualizar");
     } finally {
       setLoading(false);
     }
-  }, [onlyIdeal]);
+  }, [targetProfitPct]);
 
   useEffect(() => {
     void load();
@@ -368,6 +452,7 @@ export function Dashboard() {
             volume3x3: a.volume3x3 ?? 0,
             bttsYes: a.bttsYes ?? null,
             over25: a.over25 ?? null,
+            overLimite: r.overLimite ?? a.overLimite,
             score: a.score,
             idealOdds: a.idealOdds ?? false,
             watchlist: a.watchlist ?? true,
@@ -404,20 +489,59 @@ export function Dashboard() {
     const filtered = source.filter((row) => {
       const a = row.analysis;
       if (onlyFavorites && !favoriteIds.has(a.eventId)) return false;
-      if (onlyIdeal && !a.idealOdds && !onlyLive) return false;
+      if (strategy === "over-limite") {
+        const ol =
+          liveMap.get(a.eventId)?.overLimite ??
+          liveMap.get(a.eventId)?.analysis.overLimite ??
+          a.overLimite;
+        // Com mercado Over (lay ou back) ou snapshot já calculado
+        if (!ol || (ol.layOdds == null && ol.backOdds == null && a.over25 == null)) {
+          return false;
+        }
+      }
       if (!q) return true;
       const hay = `${a.home} ${a.away} ${a.eventName} ${a.competition ?? ""}`.toLowerCase();
       return hay.includes(q);
     });
 
-    // ENTRAR no topo, depois favoritos, depois o restante
-    const favRank = new Map(favorites.map((f, i) => [f.eventId, i]));
+    // Organização padrão: por horário (kickoff). Live primeiro, depois pré-live.
+    const startMs = (row: OpportunityRow) => {
+      const t = Date.parse(row.analysis.start);
+      return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+    };
+    const liveMinute = (row: OpportunityRow) => {
+      const m = liveMap.get(row.analysis.eventId)?.live?.minute;
+      return Number.isFinite(Number(m)) ? Number(m) : -1;
+    };
+    const isLiveRow = (row: OpportunityRow) => Boolean(liveMap.get(row.analysis.eventId)?.live);
     const isEntry = (row: OpportunityRow) => {
+      if (strategy === "over-limite") {
+        const ol = resolveOverLimite(row, liveMap.get(row.analysis.eventId));
+        return Boolean(ol?.entryReady);
+      }
       const plan =
         liveMap.get(row.analysis.eventId)?.tradePlan ?? row.analysis.tradePlan;
       return Boolean(plan?.entryReady);
     };
+    const favRank = new Map(favorites.map((f, i) => [f.eventId, i]));
+
     return [...filtered].sort((a, b) => {
+      const aLive = isLiveRow(a) ? 0 : 1;
+      const bLive = isLiveRow(b) ? 0 : 1;
+      if (aLive !== bLive) return aLive - bLive;
+
+      if (aLive === 0) {
+        // Ao vivo: mais avançados primeiro; empate por kickoff
+        const am = liveMinute(a);
+        const bm = liveMinute(b);
+        if (am !== bm) return bm - am;
+      }
+
+      const at = startMs(a);
+      const bt = startMs(b);
+      if (at !== bt) return at - bt;
+
+      // Desempate: ENTRAR → favoritos → over goodCount
       const ae = isEntry(a) ? 0 : 1;
       const be = isEntry(b) ? 0 : 1;
       if (ae !== be) return ae - be;
@@ -429,14 +553,20 @@ export function Dashboard() {
         ? (favRank.get(b.analysis.eventId) as number)
         : Number.POSITIVE_INFINITY;
       if (ai !== bi) return ai - bi;
+
+      if (strategy === "over-limite") {
+        const ag = resolveOverLimite(a, liveMap.get(a.analysis.eventId))?.goodCount ?? 0;
+        const bg = resolveOverLimite(b, liveMap.get(b.analysis.eventId))?.goodCount ?? 0;
+        if (ag !== bg) return bg - ag;
+      }
       return 0;
     });
   }, [
     opps,
     query,
     onlyLive,
-    onlyIdeal,
     onlyFavorites,
+    strategy,
     liveAsOpportunities,
     liveMap,
     favoriteIds,
@@ -457,10 +587,55 @@ export function Dashboard() {
   const activeTrade = liveForSelected?.tradePlan ?? selected?.analysis.tradePlan;
   const entryAlerts = (live?.alerts ?? []).filter((a) => a.severity === "entry").length;
 
+  const lastSyncSec =
+    lastSyncAt == null
+      ? 0
+      : Math.max(0, Math.floor((Date.now() - lastSyncAt) / 1000));
+
+  const signalStats = useMemo(() => {
+    const oppsList = opps?.opportunities ?? [];
+    const liveList = live?.rows ?? [];
+    const lay3x3Ready = (row: OpportunityRow) => {
+      const plan =
+        liveMap.get(row.analysis.eventId)?.tradePlan ?? row.analysis.tradePlan;
+      return Boolean(plan?.entryReady);
+    };
+    const overReady = (row: OpportunityRow) => {
+      const ol =
+        liveMap.get(row.analysis.eventId)?.overLimite ?? row.analysis.overLimite;
+      return Boolean(ol?.entryReady);
+    };
+    const lay3x3Filters = oppsList.length;
+    const lay3x3Entries = oppsList.filter(lay3x3Ready).length;
+    const lay3x3Waiting = oppsList.filter((r) => {
+      const plan =
+        liveMap.get(r.analysis.eventId)?.tradePlan ?? r.analysis.tradePlan;
+      return Boolean(plan?.inEntryWindow && !plan?.entryReady);
+    }).length;
+    const overEvents = oppsList.filter(
+      (r) => r.analysis.overLimite || r.analysis.over25 != null,
+    ).length;
+    const overEntries = oppsList.filter(overReady).length;
+    return {
+      lay3x3: {
+        filters: lay3x3Filters,
+        entries: lay3x3Entries,
+        waiting: lay3x3Waiting,
+        operating: lay3x3Entries > 0 || (live?.entries ?? 0) > 0,
+      },
+      overLimite: {
+        events: overEvents,
+        entries: overEntries,
+        monitoring: overEvents > 0,
+      },
+    };
+  }, [opps, live, liveMap]);
+
   const openEvent = (eventId: string) => {
     setSelectedId(eventId);
     setView("evento");
-    setSidebarOpen(false);
+    setTopNavOpen(false);
+    router.replace("/app?view=evento", { scroll: false });
     setDetailOpen({
       trade: true,
       moment: true,
@@ -473,128 +648,108 @@ export function Dashboard() {
 
   const goNav = (next: NavView) => {
     setView(next);
-    setSidebarOpen(false);
+    setTopNavOpen(false);
     if (next !== "evento") setSelectedId(null);
+    router.replace(`/app?view=${next}`, { scroll: false });
+  };
+
+  const goStrategy = (next: StrategyId) => {
+    setStrategy(next);
+    goNav("jogos");
   };
 
   const toggleDetail = (key: string) => {
     setDetailOpen((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const topNavItems: Array<{ id: NavView | "planos"; label: string; href?: string }> = [
+    { id: "dashboard", label: "Dashboard" },
+    { id: "jogos", label: "Sinais" },
+    { id: "live", label: "Resultados" },
+    { id: "gestao", label: "Histórico" },
+    { id: "planos", label: "Planos", href: "/" },
+    { id: "config", label: "Perfil" },
+  ];
+
   return (
-    <div className="app-frame">
+    <div className="app-frame is-terminal">
       <LiveAlertToasts
         toasts={toasts}
         onDismiss={dismiss}
         alertsArmed={alertsArmed}
         onArmAlerts={() => void armAlerts()}
+        extAutoSend={extAutoSend}
+        onExtAutoSendChange={setExtAutoSend}
       />
       <MatchStatsDrawer
         target={statsTarget}
         onClose={() => setStatsTarget(null)}
       />
-      <aside
-        id="app-sidebar"
-        className={`sidebar ${sidebarOpen ? "is-open" : ""}`}
-      >
-        <div className="sidebar-brand">
+
+      <header className="term-topbar">
+        <div className="term-topbar-left">
+          <button
+            type="button"
+            className="term-menu-btn"
+            aria-label="Menu"
+            aria-expanded={topNavOpen}
+            onClick={() => setTopNavOpen((v) => !v)}
+          >
+            ☰
+          </button>
           <img
-            className="brand-logo"
+            className="term-topbar-logo"
             src="/logo-tips3x3.png"
-            alt="tips3x3"
-            width={180}
-            height={53}
+            alt="Tips3x3"
+            width={120}
+            height={36}
           />
-          <button
-            type="button"
-            className="sidebar-close"
-            aria-label="Fechar menu"
-            onClick={() => setSidebarOpen(false)}
-          >
-            ✕
-          </button>
-        </div>
-
-        <nav className="sidebar-nav" aria-label="Menu principal">
-          <p className="sidebar-section">Análise</p>
-          <button
-            type="button"
-            className={`sidebar-link ${view === "jogos" ? "active" : ""}`}
-            onClick={() => goNav("jogos")}
-          >
-            <span className="sidebar-ico" aria-hidden>
-              ▦
-            </span>
-            Jogos em análise
-          </button>
-          <button
-            type="button"
-            className={`sidebar-link ${view === "live" ? "active" : ""}`}
-            onClick={() => goNav("live")}
-          >
-            <span className="sidebar-ico" aria-hidden>
-              ●
-            </span>
-            Live
-            {(live?.inplayCount ?? 0) > 0 && (
-              <span className="sidebar-badge">{live?.inplayCount}</span>
+          <nav className={`term-topnav ${topNavOpen ? "is-open" : ""}`} aria-label="Menu principal">
+            {topNavItems.map((item) =>
+              item.href ? (
+                <a key={item.id} href={item.href}>
+                  {item.label}
+                </a>
+              ) : (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={view === item.id ? "is-active" : ""}
+                  onClick={() => goNav(item.id as NavView)}
+                >
+                  {item.label}
+                  {item.id === "live" && (live?.inplayCount ?? 0) > 0
+                    ? ` (${live?.inplayCount})`
+                    : ""}
+                  {item.id === "jogos" && entryAlerts > 0 ? ` · ${entryAlerts}` : ""}
+                </button>
+              ),
             )}
+          </nav>
+        </div>
+        <div className="term-topbar-right">
+          <span className="term-sys-status">
+            <i className="term-dot is-live" aria-hidden />
+            Sistema Online
+          </span>
+          <span className="term-sync-age" suppressHydrationWarning>
+            {mounted ? `Atualizado há ${lastSyncSec}s` : "Sincronizando…"}
+          </span>
+          <button
+            type="button"
+            className="btn-icon"
+            title="Atualizar"
+            onClick={() => {
+              setTick((t) => t + 1);
+              void bankroll.reload();
+            }}
+          >
+            ↻
           </button>
           <button
             type="button"
-            className={`sidebar-link ${view === "alertas" ? "active" : ""}`}
-            onClick={() => goNav("alertas")}
-          >
-            <span className="sidebar-ico" aria-hidden>
-              ⚑
-            </span>
-            Alertas
-            {entryAlerts > 0 && <span className="sidebar-badge hot">{entryAlerts}</span>}
-          </button>
-
-          <p className="sidebar-section">Gestão</p>
-          <button
-            type="button"
-            className={`sidebar-link ${view === "gestao" ? "active" : ""}`}
-            onClick={() => goNav("gestao")}
-          >
-            <span className="sidebar-ico" aria-hidden>
-              ⌘
-            </span>
-            Central de banca
-          </button>
-
-          <p className="sidebar-section">Operações</p>
-          <button
-            type="button"
-            className={`sidebar-link ${view === "evento" ? "active" : ""}`}
-            onClick={() => goNav("evento")}
-          >
-            <span className="sidebar-ico" aria-hidden>
-              ◆
-            </span>
-            Detalhe do evento
-          </button>
-          <a
-            className="sidebar-link"
-            href="https://bolsadeaposta.bet.br"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <span className="sidebar-ico" aria-hidden>
-              ↗
-            </span>
-            Abrir exchange
-          </a>
-        </nav>
-
-        <div className="sidebar-foot">
-          <button type="button" className="btn-ghost" onClick={() => setTick((t) => t + 1)}>
-            Atualizar agora
-          </button>
-          <button
-            type="button"
-            className="btn-ghost"
+            className="btn-secondary term-logout-btn"
+            title="Sair"
             onClick={() => {
               void fetch("/api/auth/logout", { method: "POST" }).then(() => {
                 window.location.href = "/login";
@@ -604,30 +759,12 @@ export function Dashboard() {
             Sair
           </button>
         </div>
-      </aside>
+      </header>
 
-      {sidebarOpen && (
-        <button
-          type="button"
-          className="sidebar-backdrop"
-          aria-label="Fechar menu"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      <main className="main-pane">
+      <main className="main-pane is-terminal">
+        {view !== "dashboard" && view !== "gestao" && (
         <header className="main-head">
           <div className="main-head-left">
-            <button
-              type="button"
-              className="btn-menu"
-              aria-label={sidebarOpen ? "Fechar menu" : "Abrir menu"}
-              aria-expanded={sidebarOpen}
-              aria-controls="app-sidebar"
-              onClick={() => setSidebarOpen((v) => !v)}
-            >
-              ☰
-            </button>
             <div>
               <h2
                 className={
@@ -640,11 +777,15 @@ export function Dashboard() {
                   "Live"
                 ) : view === "alertas" ? (
                   "Alertas"
-                ) : view === "gestao" ? (
-                  "Central de gestão"
+                ) : view === "config" ? (
+                  "Configurações"
+                ) : strategy === "over-limite" ? (
+                  <>
+                    Lay <span>over limite</span>
+                  </>
                 ) : (
                   <>
-                    Jogos <span>em análise</span>
+                    Lay <span>3x3</span>
                   </>
                 )}
               </h2>
@@ -664,13 +805,38 @@ export function Dashboard() {
             </button>
           </div>
         </header>
+        )}
 
         {error && <div className="banner-error">{error}</div>}
+
+        {view === "dashboard" && (
+          <TradingTerminal
+            bankroll={bankroll}
+            liveRows={live?.rows ?? []}
+            signalStats={signalStats}
+            lastSyncSec={lastSyncSec}
+            onOpenEvent={openEvent}
+          />
+        )}
 
         {view === "jogos" && (
           <>
             <div className="filter-bar">
               <div className="filter-pills">
+                <button
+                  type="button"
+                  className={`pill ${strategy === "lay-3x3" ? "active" : ""}`}
+                  onClick={() => goStrategy("lay-3x3")}
+                >
+                  Lay 3x3
+                </button>
+                <button
+                  type="button"
+                  className={`pill ${strategy === "over-limite" ? "active" : ""}`}
+                  onClick={() => goStrategy("over-limite")}
+                >
+                  Lay over limite
+                </button>
                 <button
                   type="button"
                   className={`pill ${!onlyLive ? "active" : ""}`}
@@ -692,20 +858,6 @@ export function Dashboard() {
                 >
                   ★ Favoritos{favorites.length > 0 ? ` (${favorites.length})` : ""}
                 </button>
-                <button
-                  type="button"
-                  className={`pill ${onlyIdeal ? "active" : ""}`}
-                  onClick={() => setOnlyIdeal(true)}
-                >
-                  Lay preferido
-                </button>
-                <button
-                  type="button"
-                  className={`pill ${!onlyIdeal ? "active" : ""}`}
-                  onClick={() => setOnlyIdeal(false)}
-                >
-                  Todos os lays
-                </button>
               </div>
               <label className="search-field">
                 <span aria-hidden>⌕</span>
@@ -717,11 +869,24 @@ export function Dashboard() {
               </label>
             </div>
 
+            {!strategyFilterReady(strategy) ? (
+              <div className="empty-state panel-block">
+                <div className="empty-icon" aria-hidden>
+                  ≡
+                </div>
+                <strong>Nenhum filtro cadastrado para Lay over limite</strong>
+                <p>
+                  Quando o filtro desta estratégia for cadastrado, os jogos
+                  aparecerão aqui com as mesmas ferramentas da lista.
+                </p>
+              </div>
+            ) : (
             <div className="match-board">
               <div className="match-board-head" aria-hidden>
                 <span>★</span>
                 <span>Tempo</span>
                 <span>Times</span>
+                <span>Sinais</span>
                 <span>Status</span>
                 <span>Mercado</span>
               </div>
@@ -736,18 +901,22 @@ export function Dashboard() {
                     ≡
                   </div>
                   <strong>
-                    {onlyFavorites
-                      ? "Nenhum favorito nesta lista"
-                      : onlyLive
-                        ? "Nenhum jogo ao vivo agora"
-                        : "Sem partidas com liquidez"}
+                    {strategy === "over-limite"
+                      ? "Nenhum Over 2.5 com book agora"
+                      : onlyFavorites
+                        ? "Nenhum favorito nesta lista"
+                        : onlyLive
+                          ? "Nenhum jogo ao vivo agora"
+                          : "Sem partidas com liquidez"}
                   </strong>
                   <p>
-                    {onlyFavorites
-                      ? "Toque na estrela de um jogo para fixá-lo no topo e receber gols."
-                      : onlyLive
-                        ? `Feed in-play: ${live?.inplayCount ?? 0} evento(s). Atualize em instantes.`
-                        : "Só aparecem jogos com mercado 3-3 no dia."}
+                    {strategy === "over-limite"
+                      ? "A lista mostra jogos Over 2.5; a tese é lay contra o Over caçando correção e desajuste de odds."
+                      : onlyFavorites
+                        ? "Toque na estrela de um jogo para fixá-lo no topo e receber gols."
+                        : onlyLive
+                          ? `Feed in-play: ${live?.inplayCount ?? 0} evento(s). Atualize em instantes.`
+                          : "Só aparecem jogos com mercado 3-3 no dia."}
                   </p>
                 </div>
               )}
@@ -758,6 +927,7 @@ export function Dashboard() {
                     key={row.analysis.eventId}
                     row={row}
                     liveRow={liveMap.get(row.analysis.eventId)}
+                    strategy={strategy}
                     active={row.analysis.eventId === selectedId}
                     favorited={isFavorite(row.analysis.eventId)}
                     onToggleFavorite={() =>
@@ -785,13 +955,27 @@ export function Dashboard() {
                 ))}
               </div>
             </div>
+            )}
           </>
         )}
 
         {view === "live" && (
           <div className="panel-block">
             <ul className="live-list">
-              {(live?.rows ?? []).map((row) => (
+              {[...(live?.rows ?? [])]
+                .sort((a, b) => {
+                  const am = Number(a.live?.minute);
+                  const bm = Number(b.live?.minute);
+                  const aMin = Number.isFinite(am) ? am : -1;
+                  const bMin = Number.isFinite(bm) ? bm : -1;
+                  if (aMin !== bMin) return bMin - aMin;
+                  const at = Date.parse(a.analysis.start ?? "");
+                  const bt = Date.parse(b.analysis.start ?? "");
+                  const aOk = Number.isFinite(at) ? at : Number.POSITIVE_INFINITY;
+                  const bOk = Number.isFinite(bt) ? bt : Number.POSITIVE_INFINITY;
+                  return aOk - bOk;
+                })
+                .map((row) => (
                 <li key={row.analysis.eventId}>
                   <button type="button" className="live-card" onClick={() => openEvent(row.analysis.eventId)}>
                     <div className="live-card-main">
@@ -821,6 +1005,27 @@ export function Dashboard() {
 
         {view === "alertas" && (
           <div className="panel-block">
+            <div className="alertas-ext-bar">
+              <label className="alertas-ext-toggle">
+                <input
+                  type="checkbox"
+                  checked={!!extAutoSend}
+                  onChange={(e) => setExtAutoSend(e.target.checked)}
+                />
+                <span>
+                  <strong>Auto ENVIAR na extensão</strong>
+                  <em>
+                    No alerta ENTRAR, envia Lay com a odd do painel e a saída Back
+                    pela % da extensão.
+                  </em>
+                </span>
+              </label>
+              <p className="alertas-ext-hint">
+                {extAutoSend
+                  ? "Ligado — mantenha a extensão Bolsa Manual atualizada (v1.4+) e logada."
+                  : "Desligado — marque para ligar o envio automático."}
+              </p>
+            </div>
             <ul className="alerts">
               {(live?.alerts ?? []).map((a) => (
                 <li key={a.id} className={severityClass(a.severity)}>
@@ -834,7 +1039,7 @@ export function Dashboard() {
                         target="_blank"
                         rel="noreferrer"
                       >
-                        Abrir na Bolsa
+                        Abrir na BetBra
                       </a>
                     ) : null}
                   </div>
@@ -851,6 +1056,93 @@ export function Dashboard() {
         {view === "gestao" && (
           <div className="panel-block">
             <CentralGestao />
+          </div>
+        )}
+
+        {view === "config" && (
+          <div className="panel-block config-panel">
+            <section className="config-card">
+              <h3>Filtro · percentual alvo</h3>
+              <p className="config-lead">
+                Define o lucro alvo sobre a liability para calcular a odd de saída
+                Back e os sinais ENTRAR do painel (ex.: 0,1 ou 1).
+              </p>
+              <label className="config-field">
+                <span>Lucro alvo %</span>
+                <div className="config-field-row">
+                  <input
+                    type="number"
+                    min={0.1}
+                    max={100}
+                    step={0.1}
+                    inputMode="decimal"
+                    value={profitDraft.replace(",", ".")}
+                    onChange={(e) => setProfitDraft(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => {
+                      const n = Number(String(profitDraft).replace(",", "."));
+                      if (!Number.isFinite(n) || n < 0.1 || n > 100) {
+                        setProfitDraft(String(targetProfitPct).replace(".", ","));
+                        return;
+                      }
+                      const rounded = Math.round(n * 100) / 100;
+                      setTargetProfitPctPoints(rounded);
+                      setTargetProfitPct(rounded);
+                      setProfitDraft(String(rounded).replace(".", ","));
+                      setTick((t) => t + 1);
+                    }}
+                  >
+                    Salvar
+                  </button>
+                </div>
+              </label>
+              <p className="config-hint">
+                Atual: <strong>{String(targetProfitPct).replace(".", ",")}%</strong>
+                {" · "}
+                ex. lay 50 → back ~
+                {(
+                  50 / Math.max(1 - (targetProfitPct / 100) * 50, 0.01)
+                ).toFixed(2)}
+              </p>
+              <div className="config-presets">
+                {[0.1, 0.5, 1, 2].map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    className={`pill ${targetProfitPct === p ? "active" : ""}`}
+                    onClick={() => {
+                      setTargetProfitPctPoints(p);
+                      setTargetProfitPct(p);
+                      setProfitDraft(String(p).replace(".", ","));
+                      setTick((t) => t + 1);
+                    }}
+                  >
+                    {String(p).replace(".", ",")}%
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="config-card">
+              <h3>Extensão Bolsa Manual</h3>
+              <label className="alertas-ext-toggle">
+                <input
+                  type="checkbox"
+                  checked={!!extAutoSend}
+                  onChange={(e) => setExtAutoSend(e.target.checked)}
+                />
+                <span>
+                  <strong>Auto ENVIAR na extensão</strong>
+                  <em>
+                    No alerta ENTRAR, envia Lay com a odd do painel. A saída Back
+                    usa o lucro % configurado na extensão.
+                  </em>
+                </span>
+              </label>
+            </section>
           </div>
         )}
 
@@ -924,6 +1216,7 @@ function LiveScoreBadge({
 function GameRow({
   row,
   liveRow,
+  strategy = "lay-3x3",
   active,
   favorited,
   onToggleFavorite,
@@ -932,6 +1225,7 @@ function GameRow({
 }: {
   row: OpportunityRow;
   liveRow?: LivePayload["rows"][number];
+  strategy?: StrategyId;
   active?: boolean;
   favorited: boolean;
   onToggleFavorite: () => void;
@@ -940,13 +1234,29 @@ function GameRow({
 }) {
   const a = row.analysis;
   const plan = liveRow?.tradePlan ?? a.tradePlan;
+  const over = resolveOverLimite(row, liveRow);
   const live = liveRow?.live ?? null;
   const isLive = Boolean(live);
-  const status = tradeStatus(plan);
+  const status =
+    strategy === "over-limite"
+      ? over?.entryReady
+        ? "ENTRAR"
+        : over && over.goodCount >= 4
+          ? "ALINHANDO"
+          : "OVER"
+      : tradeStatus(plan);
   const statusKey = status.toLowerCase().replace(/[^a-z0-9]+/g, "");
   const [homeGoals, awayGoals] = splitScoreLabel(live?.scoreLabel);
   const pulse =
-    status === "ENTRAR" ? "is-pulse-entrar" : status === "CORRIGINDO" ? "is-pulse-corrigindo" : "";
+    status === "ENTRAR"
+      ? "is-pulse-entrar"
+      : status === "CORRIGINDO" || status === "ALINHANDO"
+        ? "is-pulse-corrigindo"
+        : "";
+  const goodIndicators =
+    strategy === "over-limite" && isLive
+      ? (over?.indicators ?? []).filter((ind) => ind.good)
+      : [];
 
   return (
     <div
@@ -993,8 +1303,25 @@ function GameRow({
         </div>
       </div>
 
+      <div className="match-card-inds" aria-label="Indicadores bons">
+        {goodIndicators.map((ind) => (
+          <span
+            key={ind.id}
+            className="match-ind is-good"
+            title={`${ind.label}: ${ind.detail}`}
+          >
+            {ind.icon}
+          </span>
+        ))}
+      </div>
+
       <div className="match-card-status">
         <span className={`status-chip status-${statusKey}`}>{status}</span>
+        {strategy === "over-limite" && over ? (
+          <span className="match-ind-count">
+            {over.goodCount}/{over.indicators.length}
+          </span>
+        ) : null}
       </div>
 
       <div className="match-card-odds">
@@ -1011,10 +1338,16 @@ function GameRow({
           <BarChart3 />
         </button>
         <OddsQuoteButtons
-          backOdds={a.quotes?.back.odds}
-          backAmount={a.quotes?.back.amount ?? 0}
-          layOdds={a.quotes?.lay.odds}
-          layAmount={a.quotes?.lay.amount ?? 0}
+          backOdds={
+            strategy === "over-limite" ? over?.backOdds ?? a.over25 : a.quotes?.back.odds
+          }
+          backAmount={strategy === "over-limite" ? 0 : a.quotes?.back.amount ?? 0}
+          layOdds={
+            strategy === "over-limite" ? over?.layOdds ?? null : a.quotes?.lay.odds
+          }
+          layAmount={
+            strategy === "over-limite" ? over?.layLiquidity ?? 0 : a.quotes?.lay.amount ?? 0
+          }
           href={row.mexchangeUrl}
           size="sm"
         />
@@ -1083,7 +1416,7 @@ function EventDetail({
             size="md"
           />
           <a className="btn-primary" href={selected.mexchangeUrl} target="_blank" rel="noreferrer">
-            Abrir na Bolsa
+            Abrir na BetBra
           </a>
           <span className={`status-chip status-${tradeStatus(activeTrade).toLowerCase()}`}>
             {tradeStatus(activeTrade)}

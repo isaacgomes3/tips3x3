@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { confirmLivePattern, toLiveSnapshot } from "@/lib/analysis/live";
-import { extractLay3x3 } from "@/lib/analysis/markets";
+import { extractLay3x3, extractOverMarket } from "@/lib/analysis/markets";
+import { buildOverLimiteSnapshot } from "@/lib/analysis/over-limite";
 import { analyzePreLive } from "@/lib/analysis/prelive";
 import { buildTradePlan } from "@/lib/analysis/trade-plan";
 import {
@@ -8,6 +9,7 @@ import {
   getInplayInfo,
   mexchangeEventUrl,
 } from "@/lib/betbra/client";
+import { parseProfitPctQuery } from "@/lib/betbra/config";
 import { getOddsHistory } from "@/lib/betbra/odds-history";
 import { analyzeTeamForm } from "@/lib/fotmob/form";
 
@@ -19,6 +21,7 @@ export async function GET(request: Request) {
     const onlyWindow = searchParams.get("ideal") === "1";
     const limitRaw = Number(searchParams.get("limit") ?? 40);
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 60) : 40;
+    const targetProfitPct = parseProfitPctQuery(searchParams.get("profitPct"));
 
     const inplay = await getInplayInfo().catch(() => []);
     const slice = inplay.slice(0, limit);
@@ -30,13 +33,21 @@ export async function GET(request: Request) {
             const event = await getEventWithScoreBook(ip.eventId, 3);
             const lay = extractLay3x3(event);
             // Mantém jogos live mesmo sem runner 3-3 ainda (mostra placar/minuto)
-            const analysis = analyzePreLive(event);
+            const analysis = analyzePreLive(event, { targetProfitPct });
             if (onlyWindow && !analysis.idealOdds && lay.runner) {
               // se pediu janela e tem mercado 3-3 fora dela, ainda mostra live
               // (filtro ideal só esconde se quiser estrito — aqui não corta live)
             }
 
             let tradePlan = analysis.tradePlan;
+            let overLimite = analysis.overLimite;
+            const overMkt = extractOverMarket(event, 2.5);
+            const teamFormPromise = analyzeTeamForm({
+              home: analysis.home,
+              away: analysis.away,
+              start: analysis.start,
+            }).catch(() => null);
+
             if (analysis.runnerId) {
               try {
                 const history = await getOddsHistory({
@@ -45,21 +56,50 @@ export async function GET(request: Request) {
                   minutesBefore: 60,
                   limit: 200,
                 });
-                const teamForm = await analyzeTeamForm({
-                  home: analysis.home,
-                  away: analysis.away,
-                  start: analysis.start,
-                }).catch(() => null);
+                const teamForm = await teamFormPromise;
                 tradePlan = buildTradePlan({
                   layOdds: analysis.layOdds ?? history.data.at(-1)?.odd ?? null,
                   historyPoints: history.data,
                   inplay: ip,
                   matchOdds: analysis.matchOdds,
                   teamForm,
+                  targetProfitPct,
                 });
               } catch {
                 // mantém tradePlan base
               }
+            }
+
+            try {
+              const teamForm = await teamFormPromise;
+              let overHistory: Awaited<ReturnType<typeof getOddsHistory>> | null =
+                null;
+              if (overMkt.runnerId) {
+                overHistory = await getOddsHistory({
+                  runnerId: overMkt.runnerId,
+                  marketId: overMkt.marketId,
+                  minutesBefore: 30,
+                  limit: 120,
+                }).catch(() => null);
+              }
+              overLimite = buildOverLimiteSnapshot({
+                layOdds: overMkt.layOdds,
+                backOdds: overMkt.backOdds,
+                layLiquidity: overMkt.liquidity,
+                marketId: overMkt.marketId,
+                runnerId: overMkt.runnerId,
+                historyPoints: overHistory?.data ?? [],
+                teamForm,
+                over25Back: analysis.over25,
+                matchOdds: analysis.matchOdds,
+                favoriteSide:
+                  (analysis.matchOdds.home.back ?? 99) <=
+                  (analysis.matchOdds.away.back ?? 99)
+                    ? "home"
+                    : "away",
+              });
+            } catch {
+              // mantém overLimite base
             }
 
             const confirmation = confirmLivePattern(analysis, ip);
@@ -99,7 +139,9 @@ export async function GET(request: Request) {
               analysis: {
                 ...analysis,
                 tradePlan,
+                overLimite,
               },
+              overLimite,
             };
           } catch {
             // Evento live sem mercado exchange acessível — ainda lista placar

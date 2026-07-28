@@ -11,6 +11,7 @@ export interface OpportunityRow {
 export async function scanDayOpportunities(options?: {
   limit?: number;
   onlyIdeal?: boolean;
+  targetProfitPct?: number;
 }): Promise<{
   generatedAt: string;
   window: ReturnType<typeof getLayOddsWindow>;
@@ -40,7 +41,9 @@ export async function scanDayOpportunities(options?: {
       const lay = extractLay3x3(event);
       if (!lay.runner) continue;
 
-      const analysis = analyzePreLive(event);
+      const analysis = analyzePreLive(event, {
+        targetProfitPct: options?.targetProfitPct,
+      });
       if (options?.onlyIdeal && !analysis.idealOdds) continue;
 
       opportunities.push({

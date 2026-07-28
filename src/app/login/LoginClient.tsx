@@ -2,14 +2,13 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 
 export default function LoginClient() {
   const router = useRouter();
   const search = useSearchParams();
-  const next = search.get("next") || "/app";
-  const [email, setEmail] = useState("isaacgomes3@gmail.com");
+  const next = search.get("next") || "/app?view=dashboard";
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -43,25 +42,23 @@ export default function LoginClient() {
       <div className="sell-login-bg" aria-hidden />
       <div className="sell-login-card">
         <Link href="/" className="sell-login-brand">
-          <Image
-            src="/logo-tips3x3.png"
-            alt="tips3x3"
-            width={160}
-            height={40}
-            priority
-          />
+          <img src="/logo-tips3x3.png" alt="tips3x3" width={160} height={40} />
         </Link>
         <h1>Bem-vindo de volta!</h1>
         <p className="sell-login-sub">
           Inicie sessão e desbloqueie o painel de lay 3-3.
         </p>
 
-        <form onSubmit={onSubmit} className="sell-login-form">
+        <form onSubmit={onSubmit} className="sell-login-form" autoComplete="off">
           <label>
             E-mail
             <input
               type="email"
-              autoComplete="username"
+              name="email"
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -71,7 +68,8 @@ export default function LoginClient() {
             Senha
             <input
               type="password"
-              autoComplete="current-password"
+              name="password"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

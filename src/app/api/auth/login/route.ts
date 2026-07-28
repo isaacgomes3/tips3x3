@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     const res = NextResponse.json({
       ok: true,
       email,
-      redirect: "/app",
+      redirect: "/app?view=dashboard",
     });
     const cookie = sessionCookieOptions(token);
     res.cookies.set(cookie);

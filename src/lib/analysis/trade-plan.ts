@@ -222,6 +222,7 @@ export function buildTradePlan(opts: {
   layOdds: number | null;
   historyPoints?: OddsHistoryPoint[];
   referenceStake?: number;
+  targetProfitPct?: number;
   inplay?: InplayEvent;
   matchOdds?: {
     home?: { back?: number | null };
@@ -230,7 +231,11 @@ export function buildTradePlan(opts: {
   teamForm?: TeamFormReport | null;
 }): TradePlan {
   const window = getLayOddsWindow();
-  const trade = getTradeConfig();
+  const trade = getTradeConfig(
+    opts.targetProfitPct != null
+      ? { targetProfitPct: opts.targetProfitPct }
+      : undefined,
+  );
   const layOdds = opts.layOdds;
   const inEntryWindow =
     layOdds != null &&
@@ -347,7 +352,9 @@ export function buildTradePlan(opts: {
       scoreGate.scoreAllowed,
   );
 
-  const pctLabel = `${(trade.targetProfitPct * 100).toFixed(0)}%`;
+  const pctLabel = `${(trade.targetProfitPct * 100).toLocaleString("pt-BR", {
+    maximumFractionDigits: 2,
+  })}%`;
   const backLabel = targetBackOdds?.toFixed(0) ?? "—";
 
   let summary: string;

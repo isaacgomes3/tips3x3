@@ -8,6 +8,11 @@ import {
   isAlertAudioUnlocked,
   type AlertSoundKind,
 } from "@/lib/alert-sound";
+import {
+  dispatchExtAutoEntry,
+  isExtAutoSendEnabled,
+  setExtAutoSendEnabled,
+} from "@/lib/bolsa-bridge";
 
 export type LiveToast = {
   id: string;
@@ -23,6 +28,9 @@ type LiveScoreRow = {
     home?: string;
     away?: string;
     eventName?: string;
+    layOdds?: number | null;
+    marketId?: string;
+    runnerId?: string;
   };
   live?: {
     scoreLabel?: string;
@@ -31,8 +39,10 @@ type LiveScoreRow = {
   } | null;
   tradePlan?: {
     entryReady?: boolean;
+    layOdds?: number | null;
   };
   confirmed?: boolean;
+  mexchangeUrl?: string;
 };
 
 function parseGoals(scoreLabel?: string | null): number | null {
@@ -104,6 +114,7 @@ export function useLiveAlerts(
 ) {
   const [toasts, setToasts] = useState<LiveToast[]>([]);
   const [alertsArmed, setAlertsArmed] = useState(false);
+  const [extAutoSend, setExtAutoSendState] = useState(false);
   const lastScoreRef = useRef<Map<string, string>>(new Map());
   const lastStatusRef = useRef<Map<string, string>>(new Map());
   const enterNotifiedRef = useRef<Set<string>>(new Set());
@@ -111,9 +122,42 @@ export function useLiveAlerts(
   const primedRef = useRef(false);
   const ftNotifiedRef = useRef<Set<string>>(new Set());
   const bootAtRef = useRef(Date.now());
+  const autoSentRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    setExtAutoSendState(isExtAutoSendEnabled());
+  }, []);
+
+  const setExtAutoSend = useCallback((on: boolean) => {
+    setExtAutoSendEnabled(on);
+    setExtAutoSendState(on);
+  }, []);
 
   const dismiss = useCallback((id: string) => {
     setToasts((list) => list.filter((t) => t.id !== id));
+  }, []);
+
+  const sendToExtension = useCallback((row: LiveScoreRow) => {
+    if (!isExtAutoSendEnabled()) return;
+    const id = row.analysis.eventId;
+    if (!id || autoSentRef.current.has(id)) return;
+    const layOdds = Number(
+      row.tradePlan?.layOdds ?? row.analysis.layOdds ?? 0,
+    );
+    if (!(layOdds > 1.01)) return;
+    autoSentRef.current.add(id);
+    const ok = dispatchExtAutoEntry({
+      eventId: id,
+      eventName:
+        row.analysis.eventName ||
+        `${row.analysis.home ?? "?"} vs ${row.analysis.away ?? "?"}`,
+      score: "3-3",
+      layOdds,
+      marketId: row.analysis.marketId,
+      runnerId: row.analysis.runnerId,
+      mexchangeUrl: row.mexchangeUrl,
+    });
+    if (!ok) autoSentRef.current.delete(id);
   }, []);
 
   const pushAlert = useCallback(
@@ -273,22 +317,27 @@ export function useLiveAlerts(
             row.live?.minute != null
               ? ` @ ${Math.floor(row.live.minute)}′`
               : "";
+          const layOdds = Number(
+            row.tradePlan?.layOdds ?? row.analysis.layOdds ?? 0,
+          );
           pushAlert({
             kind: "enter",
             title: `ENTRAR · ${name}`,
             body: label
-              ? `Indicação de entrada · ${label}${minute}`
-              : `Indicação de entrada${minute}`,
+              ? `Indicação de entrada · ${label}${minute}${layOdds > 1 ? ` · lay x${layOdds}` : ""}`
+              : `Indicação de entrada${minute}${layOdds > 1 ? ` · lay x${layOdds}` : ""}`,
             tag: `tips3x3-enter-${id}-${Date.now()}`,
           });
+          sendToExtension(row);
         }
       } else {
         enterNotifiedRef.current.delete(id);
+        autoSentRef.current.delete(id);
       }
     }
 
     primedRef.current = true;
-  }, [favorites, liveRows, pushAlert]);
+  }, [favorites, liveRows, pushAlert, sendToExtension]);
 
   // Revalida quando o celular volta à tela
   useEffect(() => {
@@ -311,12 +360,20 @@ export function useLiveAlerts(
               : "Indicação de entrada",
             tag: `tips3x3-enter-${id}-vis`,
           });
+          sendToExtension(row);
         }
       }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [favorites, liveRows, pushAlert]);
+  }, [favorites, liveRows, pushAlert, sendToExtension]);
 
-  return { toasts, dismiss, alertsArmed, armAlerts };
+  return {
+    toasts,
+    dismiss,
+    alertsArmed,
+    armAlerts,
+    extAutoSend,
+    setExtAutoSend,
+  };
 }

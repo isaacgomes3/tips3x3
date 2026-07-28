@@ -102,30 +102,42 @@ export async function getEvent(
   );
 }
 
-/** Busca o evento e hidrata o book do Correct Score via market-ids. */
+/** Busca o evento e hidrata o book do Correct Score + Total (Over) via market-ids. */
 export async function getEventWithScoreBook(
   eventId: string,
   priceDepth = 3,
 ): Promise<BetBraEvent> {
   const base = await getEvent(eventId, priceDepth);
-  const cs = base.markets?.find(
+  const markets = base.markets ?? [];
+  const cs = markets.find(
     (m) => (m["name-original"] ?? m.name)?.toLowerCase() === "correct score",
   );
-  if (!cs?.id) return base;
-
-  const alreadyPriced = (cs.runners ?? []).some(
-    (r) => (r.prices?.length ?? 0) > 0,
+  const totals = markets.filter(
+    (m) => (m["name-original"] ?? m.name)?.toLowerCase() === "total",
   );
-  if (alreadyPriced) return base;
+
+  const needIds: string[] = [];
+  const csNeeds =
+    cs?.id &&
+    !(cs.runners ?? []).some((r) => (r.prices?.length ?? 0) > 0);
+  if (csNeeds && cs?.id) needIds.push(cs.id);
+
+  for (const t of totals) {
+    if (!t.id) continue;
+    const priced = (t.runners ?? []).some((r) => (r.prices?.length ?? 0) > 0);
+    if (!priced) needIds.push(t.id);
+  }
+
+  if (!needIds.length) return base;
 
   try {
-    const priced = await getEvent(eventId, priceDepth, [cs.id]);
-    const pricedCs = priced.markets?.find((m) => m.id === cs.id) ?? priced.markets?.[0];
-    if (!pricedCs) return base;
-
+    const priced = await getEvent(eventId, priceDepth, needIds);
+    const pricedById = new Map(
+      (priced.markets ?? []).map((m) => [m.id, m] as const),
+    );
     return {
       ...base,
-      markets: (base.markets ?? []).map((m) => (m.id === pricedCs.id ? pricedCs : m)),
+      markets: markets.map((m) => pricedById.get(m.id) ?? m),
     };
   } catch {
     return base;
