@@ -466,6 +466,11 @@ a {
   transition: background 0.15s ease;
 }
 
+.match-card.is-over-limite {
+  grid-template-columns: 2rem 3.4rem minmax(7rem, 1fr) auto auto;
+  grid-template-areas: "fav time sides status odds";
+}
+
 .match-card:hover {
   background: rgba(196, 255, 0, 0.04);
 }
@@ -745,6 +750,10 @@ a {
     border-bottom-color: rgba(255, 255, 255, 0.06);
   }
 
+  .match-card.is-over-limite {
+    grid-template-columns: 1.7rem 2.55rem minmax(0, 1fr) auto auto;
+  }
+
   .match-card-minute-badge {
     min-width: 2.2rem;
     height: 2.2rem;
@@ -771,6 +780,11 @@ a {
     max-width: 4.6rem;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* No mobile, o Lay Over só exibe o status quando a entrada foi liberada. */
+  .match-card-status.is-over-limite .status-chip:not(.status-entrar) {
+    display: none;
   }
 
   .match-card-odds .quote-sm {

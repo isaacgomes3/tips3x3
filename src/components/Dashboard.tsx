@@ -842,7 +842,7 @@ export function Dashboard() {
                   "Configurações"
                 ) : strategy === "over-limite" ? (
                   <>
-                    Lay <span>over limite</span>
+                    Lay <span>over 2.5</span>
                   </>
                 ) : (
                   <>
@@ -896,7 +896,7 @@ export function Dashboard() {
                   className={`pill ${strategy === "over-limite" ? "active" : ""}`}
                   onClick={() => goStrategy("over-limite")}
                 >
-                  Lay over limite
+                  Lay over 2.5
                 </button>
                 <button
                   type="button"
@@ -935,7 +935,7 @@ export function Dashboard() {
                 <div className="empty-icon" aria-hidden>
                   ≡
                 </div>
-                <strong>Nenhum filtro cadastrado para Lay over limite</strong>
+                <strong>Nenhum filtro cadastrado para Lay over 2.5</strong>
                 <p>
                   Quando o filtro desta estratégia for cadastrado, os jogos
                   aparecerão aqui com as mesmas ferramentas da lista.
@@ -1340,16 +1340,12 @@ function GameRow({
       : status === "CORRIGINDO" || status === "ALINHANDO"
         ? "is-pulse-corrigindo"
         : "";
-  const goodIndicators =
-    strategy === "over-limite" && isLive
-      ? (over?.indicators ?? []).filter((ind) => ind.good)
-      : [];
 
   return (
     <div
       role="button"
       tabIndex={0}
-      className={`match-card ${active ? "is-active" : ""} ${isLive ? "is-live" : ""} ${favorited ? "is-fav" : ""} ${pulse}`.trim()}
+      className={`match-card ${strategy === "over-limite" ? "is-over-limite" : ""} ${active ? "is-active" : ""} ${isLive ? "is-live" : ""} ${favorited ? "is-fav" : ""} ${pulse}`.trim()}
       onClick={onOpen}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -1390,25 +1386,10 @@ function GameRow({
         </div>
       </div>
 
-      <div className="match-card-inds" aria-label="Indicadores bons">
-        {goodIndicators.map((ind) => (
-          <span
-            key={ind.id}
-            className="match-ind is-good"
-            title={`${ind.label}: ${ind.detail}`}
-          >
-            {ind.icon}
-          </span>
-        ))}
-      </div>
-
-      <div className="match-card-status">
+      <div
+        className={`match-card-status ${strategy === "over-limite" ? "is-over-limite" : ""}`}
+      >
         <span className={`status-chip status-${statusKey}`}>{status}</span>
-        {strategy === "over-limite" && over ? (
-          <span className="match-ind-count">
-            {over.goodCount}/{over.indicators.length}
-          </span>
-        ) : null}
       </div>
 
       <div className="match-card-odds">

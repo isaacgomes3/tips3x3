@@ -485,7 +485,7 @@ export function TradingTerminal({
               </dl>
             </article>
             <article className="term-panel term-signal-card">
-              <h4>LAY OVER LIMITE</h4>
+              <h4>LAY OVER 2.5</h4>
               <div className="term-signal-status">
                 <span className="term-dot is-watch" />
                 {signalStats.overLimite.monitoring ? "Monitorando" : "Standby"}
