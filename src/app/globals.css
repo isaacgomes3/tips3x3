@@ -61,8 +61,9 @@ body {
   color: var(--text);
   font-family: var(--font-body);
   background:
-    radial-gradient(900px 480px at 0% 0%, rgba(196, 255, 0, 0.07), transparent 55%),
-    linear-gradient(180deg, #070d08 0%, #050a05 100%);
+    radial-gradient(ellipse 70% 50% at 50% 35%, rgba(109, 171, 0, 0.22), transparent 67%),
+    radial-gradient(ellipse 48% 36% at 50% 62%, rgba(45, 92, 4, 0.18), transparent 72%),
+    linear-gradient(145deg, #010302 0%, #071006 48%, #010201 100%);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -4107,7 +4108,10 @@ a {
   position: relative;
   isolation: isolate;
   min-height: 100vh;
-  background: var(--lp-black);
+  background:
+    radial-gradient(ellipse 70% 52% at 50% 35%, rgba(104, 172, 0, 0.2), transparent 67%),
+    radial-gradient(ellipse 48% 36% at 50% 62%, rgba(45, 92, 4, 0.17), transparent 72%),
+    linear-gradient(145deg, #010302 0%, #071006 48%, #010201 100%);
   color: #fff;
   font-family: var(--font-body);
   scroll-behavior: smooth;
