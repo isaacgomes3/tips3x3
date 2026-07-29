@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export type EnrichedLiveSnapshot = {
   scoreLabel: string;
@@ -34,21 +34,33 @@ function parseMinute(value: unknown): number | null {
   return m ? Number(m[1]) : null;
 }
 
-function isLikelyLive(status: unknown, minute: number | null) {
-  if (minute != null && minute >= 0 && minute <= 130) return true;
-  const s = String(status ?? "").toLowerCase();
-  return /live|vivo|1st|2nd|ht|half|minuto|['′]/.test(s);
+function estimateMinuteFromKickoff(start: string): number | null {
+  const t = Date.parse(start);
+  if (!Number.isFinite(t)) return null;
+  const elapsed = Math.floor((Date.now() - t) / 60_000);
+  if (elapsed < 0 || elapsed > 130) return null;
+  return elapsed;
 }
 
-function needsEnrichment(
-  game: GameRef,
-  hasBetbraLive: boolean,
-): boolean {
+function normalizeScoreLabel(raw: string): string | null {
+  const label = raw.replace(/\s+/g, "");
+  const m = label.match(/^(\d+)[-–:](\d+)$/);
+  return m ? `${m[1]}-${m[2]}` : null;
+}
+
+function needsEnrichment(game: GameRef, hasBetbraLive: boolean): boolean {
   if (hasBetbraLive) return false;
   const start = Date.parse(game.start);
   if (!Number.isFinite(start)) return false;
   const now = Date.now();
   return start <= now + 8 * 60_000 && start >= now - 4 * 60 * 60_000;
+}
+
+function gamesFingerprint(games: GameRef[]) {
+  return games
+    .map((g) => `${g.eventId}:${g.start}`)
+    .sort()
+    .join("|");
 }
 
 export function useGamesLiveEnrichment(
@@ -62,51 +74,95 @@ export function useGamesLiveEnrichment(
     new Map(),
   );
 
-  const pending = useMemo(() => {
+  const gamesKey = useMemo(() => gamesFingerprint(games), [games]);
+  const gamesRef = useRef(games);
+  gamesRef.current = games;
+  const hasBetbraLiveRef = useRef(hasBetbraLive);
+  hasBetbraLiveRef.current = hasBetbraLive;
+
+  const pendingKey = useMemo(() => {
     return games
       .filter((g) => needsEnrichment(g, hasBetbraLive(g.eventId)))
-      .slice(0, 10);
-  }, [games, hasBetbraLive]);
+      .slice(0, 14)
+      .map((g) => g.eventId)
+      .join("|");
+  }, [games, gamesKey, hasBetbraLive]);
 
   useEffect(() => {
-    if (!pending.length) return;
+    if (!pendingKey) return;
 
     let cancelled = false;
 
+    const currentPending = () =>
+      gamesRef.current
+        .filter((g) => needsEnrichment(g, hasBetbraLiveRef.current(g.eventId)))
+        .slice(0, 14);
+
     const load = async () => {
-      for (const game of pending) {
-        if (cancelled) break;
-        try {
-          const qs = new URLSearchParams({
-            home: game.home,
-            away: game.away,
-          });
-          if (game.eventId) qs.set("eventId", game.eventId);
-          if (game.start) qs.set("start", game.start);
-          const res = await fetch(`/api/match-stats?${qs.toString()}`);
-          if (!res.ok) continue;
-          const json = (await res.json()) as {
-            scoreLabel?: string | null;
-            minute?: string | number | null;
-            status?: string | null;
-          };
-          const minute = parseMinute(json.minute ?? json.status);
-          if (!json.scoreLabel || !isLikelyLive(json.status, minute)) continue;
+      const pending = currentPending();
+      if (!pending.length) return;
 
-          const snap: EnrichedLiveSnapshot = {
-            scoreLabel: json.scoreLabel.replace(/\s+/g, ""),
-            minute,
-            status: json.status ?? "Ao vivo",
-          };
+      const results = await Promise.all(
+        pending.map(async (game) => {
+          try {
+            const qs = new URLSearchParams({
+              home: game.home,
+              away: game.away,
+            });
+            if (game.eventId) qs.set("eventId", game.eventId);
+            if (game.start) qs.set("start", game.start);
+            const res = await fetch(`/api/match-stats?${qs.toString()}`);
+            if (!res.ok) return null;
+            const json = (await res.json()) as {
+              scoreLabel?: string | null;
+              minute?: string | number | null;
+              status?: string | null;
+            };
 
-          setByEventId((prev) => new Map(prev).set(game.eventId, snap));
-          setByTeams((prev) =>
-            new Map(prev).set(normalizeTeams(game.home, game.away), snap),
-          );
-        } catch {
-          /* ignore */
+            const scoreLabel = json.scoreLabel
+              ? normalizeScoreLabel(json.scoreLabel)
+              : null;
+            // Só jogos na janela de kickoff entram em pending — placar válido basta
+            if (!scoreLabel) return null;
+
+            const minute =
+              parseMinute(json.minute) ??
+              parseMinute(json.status) ??
+              estimateMinuteFromKickoff(game.start);
+
+            return {
+              game,
+              snap: {
+                scoreLabel,
+                minute,
+                status: json.status ?? "Ao vivo",
+              } satisfies EnrichedLiveSnapshot,
+            };
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      if (cancelled) return;
+
+      const ok = results.filter(
+        (r): r is { game: GameRef; snap: EnrichedLiveSnapshot } => r != null,
+      );
+      if (!ok.length) return;
+
+      setByEventId((prev) => {
+        const next = new Map(prev);
+        for (const { game, snap } of ok) next.set(game.eventId, snap);
+        return next;
+      });
+      setByTeams((prev) => {
+        const next = new Map(prev);
+        for (const { game, snap } of ok) {
+          next.set(normalizeTeams(game.home, game.away), snap);
         }
-      }
+        return next;
+      });
     };
 
     void load();
@@ -115,7 +171,20 @@ export function useGamesLiveEnrichment(
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [pending]);
+  }, [pendingKey]);
+
+  useEffect(() => {
+    const ids = new Set(games.map((g) => g.eventId));
+    setByEventId((prev) => {
+      let changed = false;
+      const next = new Map<string, EnrichedLiveSnapshot>();
+      for (const [id, snap] of prev) {
+        if (ids.has(id)) next.set(id, snap);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [games, gamesKey]);
 
   const resolve = (game: GameRef): EnrichedLiveSnapshot | null => {
     return (

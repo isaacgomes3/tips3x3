@@ -144,11 +144,30 @@ export async function getEventWithScoreBook(
   }
 }
 
+let inplayCache: { at: number; data: InplayEvent[] } | null = null;
+const INPLAY_CACHE_TTL_MS = 8_000;
+let inplayInflight: Promise<InplayEvent[]> | null = null;
+
 export async function getInplayInfo(): Promise<InplayEvent[]> {
-  return getJson<InplayEvent[]>(
+  const now = Date.now();
+  if (inplayCache && now - inplayCache.at < INPLAY_CACHE_TTL_MS) {
+    return inplayCache.data;
+  }
+  if (inplayInflight) return inplayInflight;
+
+  inplayInflight = getJson<InplayEvent[]>(
     `${BETBRA.clientApi}/jumper/feedSports/inplay-info`,
     clientHeaders(),
-  );
+  )
+    .then((data) => {
+      inplayCache = { at: Date.now(), data };
+      return data;
+    })
+    .finally(() => {
+      inplayInflight = null;
+    });
+
+  return inplayInflight;
 }
 
 export async function getInplayByEventId(

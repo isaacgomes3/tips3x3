@@ -9,6 +9,7 @@ import { MomentAnalysisCard } from "@/components/MomentAnalysisCard";
 import { OddsQuoteButtons } from "@/components/OddsQuoteButtons";
 import { OddsVolumeChart } from "@/components/OddsVolumeChart";
 import { LiveAlertToasts } from "@/components/LiveAlertToasts";
+import { NativeShell } from "@/components/NativeShell";
 import { CentralGestao } from "@/components/CentralGestao";
 import { TradingTerminal } from "@/components/terminal/TradingTerminal";
 import { useBankrollData } from "@/hooks/useBankrollData";
@@ -20,18 +21,39 @@ import {
   getTargetProfitPctPoints,
   setTargetProfitPctPoints,
 } from "@/lib/panel-settings";
-import { BarChart3 } from "lucide-react";
+import {
+  BarChart3,
+  Grid3x3,
+  List,
+  Radio,
+  Star,
+  Target,
+} from "lucide-react";
 
 type OverIndicatorTone = "good" | "warn" | "bad" | "idle";
 type OverLimiteSnapshot = {
   line: number;
   settled: boolean;
+  marketId?: string;
+  runnerId?: string;
   layOdds: number | null;
   backOdds: number | null;
   layLiquidity: number;
   gapTicks: number | null;
   goodCount: number;
   entryReady: boolean;
+  exitPlan: {
+    entryLayOdds: number;
+    targetBackOdds: number;
+    targetProfitPct: number;
+    ticksPerMin: number;
+    targetTicks: number;
+    etaMinutes: number | null;
+    minute: number | null;
+    favoritePressureBias: number | null;
+    confidence: "high" | "medium" | "low";
+    summary: string;
+  } | null;
   summary: string;
   indicators: Array<{
     id: string;
@@ -111,6 +133,8 @@ type OpportunityPayload = {
   totalEvents: number;
   opportunities: Array<{
     mexchangeUrl: string;
+    overMexchangeUrl?: string;
+    overMexchangeUrl35?: string;
     analysis: {
       eventId: string;
       eventName: string;
@@ -132,6 +156,7 @@ type OpportunityPayload = {
       bttsYes: number | null;
       over25: number | null;
       overLimite?: OverLimiteSnapshot;
+      overLimite35?: OverLimiteSnapshot;
       score: number;
       idealOdds: boolean;
       watchlist: boolean;
@@ -174,9 +199,12 @@ type LivePayload = {
   rows: Array<{
     confirmed: boolean;
     mexchangeUrl: string;
+    overMexchangeUrl?: string;
+    overMexchangeUrl35?: string;
     reasons: string[];
     tradePlan?: TradePlan;
     overLimite?: OverLimiteSnapshot;
+    overLimite35?: OverLimiteSnapshot;
     live: null | {
       scoreLabel: string;
       minute: number | null;
@@ -211,13 +239,22 @@ type LivePayload = {
       matchOdds?: OpportunityRow["analysis"]["matchOdds"];
       tradePlan?: TradePlan;
       overLimite?: OverLimiteSnapshot;
+      overLimite35?: OverLimiteSnapshot;
     };
   }>;
   error?: string;
 };
 
 type NavView = "dashboard" | "jogos" | "live" | "alertas" | "gestao" | "evento" | "config";
-type StrategyId = "lay-3x3" | "over-limite";
+type StrategyId = "lay-3x3" | "over-limite" | "over-limite-35";
+
+function isOverStrategy(strategy: StrategyId): boolean {
+  return strategy === "over-limite" || strategy === "over-limite-35";
+}
+
+function overLineForStrategy(strategy: StrategyId): number {
+  return strategy === "over-limite-35" ? 3.5 : 2.5;
+}
 
 function normalizeTeamKey(home: string, away: string) {
   const norm = (s: string) =>
@@ -243,19 +280,43 @@ function isNavView(v: string | null): v is NavView {
 }
 
 function strategyFilterReady(strategy: StrategyId): boolean {
-  return strategy === "lay-3x3" || strategy === "over-limite";
+  return (
+    strategy === "lay-3x3" ||
+    strategy === "over-limite" ||
+    strategy === "over-limite-35"
+  );
 }
 
 function resolveOverLimite(
   row: OpportunityRow,
   liveRow?: LivePayload["rows"][number],
+  strategy: StrategyId = "over-limite",
 ): OverLimiteSnapshot | null {
+  if (strategy === "over-limite-35") {
+    return (
+      liveRow?.overLimite35 ??
+      liveRow?.analysis?.overLimite35 ??
+      row.analysis.overLimite35 ??
+      null
+    );
+  }
   return (
     liveRow?.overLimite ??
     liveRow?.analysis?.overLimite ??
     row.analysis.overLimite ??
     null
   );
+}
+
+function resolveOverMarketUrl(
+  row: OpportunityRow,
+  liveRow?: LivePayload["rows"][number],
+  strategy: StrategyId = "over-limite",
+): string | undefined {
+  if (strategy === "over-limite-35") {
+    return liveRow?.overMexchangeUrl35 ?? row.overMexchangeUrl35;
+  }
+  return liveRow?.overMexchangeUrl ?? row.overMexchangeUrl;
 }
 
 function formatKickTime(iso: string) {
@@ -374,7 +435,18 @@ export function Dashboard() {
     setMounted(true);
     setLastSyncAt(Date.now());
   }, []);
-  const { favorites, favoriteIds, toggleFavorite, isFavorite } = useFavorites();
+  const { favorites, favoriteIds, toggleFavorite, isFavorite, reconcileWithLive } =
+    useFavorites();
+
+  useEffect(() => {
+    if (!live || !opps) return;
+    const activeIds = new Set<string>();
+    for (const row of live.rows ?? []) activeIds.add(row.analysis.eventId);
+    for (const row of opps.opportunities ?? []) {
+      activeIds.add(row.analysis.eventId);
+    }
+    reconcileWithLive(live.rows, activeIds);
+  }, [live, opps, reconcileWithLive]);
 
   useEffect(() => {
     const p = getTargetProfitPctPoints();
@@ -465,7 +537,10 @@ export function Dashboard() {
   );
 
   const hasBetbraLive = useCallback(
-    (eventId: string) => Boolean(liveMap.get(eventId)?.live),
+    (eventId: string) => {
+      const row = liveMap.get(eventId);
+      return Boolean(row?.live?.scoreLabel);
+    },
     [liveMap],
   );
 
@@ -477,6 +552,8 @@ export function Dashboard() {
         const [homeFallback, awayFallback] = (a.eventName ?? "").split(/\s+vs\s+/i);
         return {
           mexchangeUrl: r.mexchangeUrl,
+          overMexchangeUrl: r.overMexchangeUrl,
+          overMexchangeUrl35: r.overMexchangeUrl35,
           analysis: {
             eventId: a.eventId,
             eventName: a.eventName,
@@ -494,6 +571,7 @@ export function Dashboard() {
             bttsYes: a.bttsYes ?? null,
             over25: a.over25 ?? null,
             overLimite: r.overLimite ?? a.overLimite,
+            overLimite35: r.overLimite35 ?? a.overLimite35,
             score: a.score,
             idealOdds: a.idealOdds ?? false,
             watchlist: a.watchlist ?? true,
@@ -530,13 +608,14 @@ export function Dashboard() {
     const filtered = source.filter((row) => {
       const a = row.analysis;
       if (onlyFavorites && !favoriteIds.has(a.eventId)) return false;
-      if (strategy === "over-limite") {
-        const ol =
-          liveMap.get(a.eventId)?.overLimite ??
-          liveMap.get(a.eventId)?.analysis.overLimite ??
-          a.overLimite;
+      if (isOverStrategy(strategy)) {
+        const ol = resolveOverLimite(
+          row,
+          liveMap.get(a.eventId),
+          strategy,
+        );
         // Com mercado Over (lay ou back) ou snapshot já calculado
-        if (!ol || (ol.layOdds == null && ol.backOdds == null && a.over25 == null)) {
+        if (!ol || (ol.layOdds == null && ol.backOdds == null)) {
           return false;
         }
       }
@@ -565,8 +644,12 @@ export function Dashboard() {
       );
     };
     const isEntry = (row: OpportunityRow) => {
-      if (strategy === "over-limite") {
-        const ol = resolveOverLimite(row, liveMap.get(row.analysis.eventId));
+      if (isOverStrategy(strategy)) {
+        const ol = resolveOverLimite(
+          row,
+          liveMap.get(row.analysis.eventId),
+          strategy,
+        );
         return Boolean(ol?.entryReady);
       }
       const plan =
@@ -604,9 +687,13 @@ export function Dashboard() {
         : Number.POSITIVE_INFINITY;
       if (ai !== bi) return ai - bi;
 
-      if (strategy === "over-limite") {
-        const ag = resolveOverLimite(a, liveMap.get(a.analysis.eventId))?.goodCount ?? 0;
-        const bg = resolveOverLimite(b, liveMap.get(b.analysis.eventId))?.goodCount ?? 0;
+      if (isOverStrategy(strategy)) {
+        const ag =
+          resolveOverLimite(a, liveMap.get(a.analysis.eventId), strategy)
+            ?.goodCount ?? 0;
+        const bg =
+          resolveOverLimite(b, liveMap.get(b.analysis.eventId), strategy)
+            ?.goodCount ?? 0;
         if (ag !== bg) return bg - ag;
       }
       return 0;
@@ -624,13 +711,19 @@ export function Dashboard() {
     favorites,
   ]);
 
+  const enrichmentGames = useMemo(
+    () =>
+      games.map((g) => ({
+        eventId: g.analysis.eventId,
+        home: g.analysis.home,
+        away: g.analysis.away,
+        start: g.analysis.start,
+      })),
+    [games],
+  );
+
   const liveEnrichment = useGamesLiveEnrichment(
-    games.map((g) => ({
-      eventId: g.analysis.eventId,
-      home: g.analysis.home,
-      away: g.analysis.away,
-      start: g.analysis.start,
-    })),
+    enrichmentGames,
     hasBetbraLive,
   );
 
@@ -661,9 +754,12 @@ export function Dashboard() {
         liveMap.get(row.analysis.eventId)?.tradePlan ?? row.analysis.tradePlan;
       return Boolean(plan?.entryReady);
     };
-    const overReady = (row: OpportunityRow) => {
-      const ol =
-        liveMap.get(row.analysis.eventId)?.overLimite ?? row.analysis.overLimite;
+    const overReady = (row: OpportunityRow, strat: StrategyId) => {
+      const ol = resolveOverLimite(
+        row,
+        liveMap.get(row.analysis.eventId),
+        strat,
+      );
       return Boolean(ol?.entryReady);
     };
     const lay3x3Filters = oppsList.length;
@@ -673,10 +769,18 @@ export function Dashboard() {
         liveMap.get(r.analysis.eventId)?.tradePlan ?? r.analysis.tradePlan;
       return Boolean(plan?.inEntryWindow && !plan?.entryReady);
     }).length;
-    const overEvents = oppsList.filter(
-      (r) => r.analysis.overLimite || r.analysis.over25 != null,
+    const overEvents = oppsList.filter((r) => {
+      const ol = r.analysis.overLimite;
+      return ol && (ol.layOdds != null || ol.backOdds != null);
+    }).length;
+    const overEntries = oppsList.filter((r) => overReady(r, "over-limite")).length;
+    const over35Events = oppsList.filter((r) => {
+      const ol = r.analysis.overLimite35;
+      return ol && (ol.layOdds != null || ol.backOdds != null);
+    }).length;
+    const over35Entries = oppsList.filter((r) =>
+      overReady(r, "over-limite-35"),
     ).length;
-    const overEntries = oppsList.filter(overReady).length;
     return {
       lay3x3: {
         filters: lay3x3Filters,
@@ -688,6 +792,11 @@ export function Dashboard() {
         events: overEvents,
         entries: overEntries,
         monitoring: overEvents > 0,
+      },
+      overLimite35: {
+        events: over35Events,
+        entries: over35Entries,
+        monitoring: over35Events > 0,
       },
     };
   }, [opps, live, liveMap]);
@@ -734,13 +843,12 @@ export function Dashboard() {
 
   return (
     <div className="app-frame is-terminal">
+      <NativeShell />
       <LiveAlertToasts
         toasts={toasts}
         onDismiss={dismiss}
         alertsArmed={alertsArmed}
         onArmAlerts={() => void armAlerts()}
-        extAutoSend={extAutoSend}
-        onExtAutoSendChange={setExtAutoSend}
       />
       <MatchStatsDrawer
         target={statsTarget}
@@ -789,6 +897,16 @@ export function Dashboard() {
           </nav>
         </div>
         <div className="term-topbar-right">
+          <label className="term-ext-switch" title="Envio automático via extensão Bolsa Manual">
+            <span className="term-ext-switch-label">Ativar extensão</span>
+            <input
+              type="checkbox"
+              checked={!!extAutoSend}
+              onChange={(e) => setExtAutoSend(e.target.checked)}
+              aria-label="Ativar extensão"
+            />
+            <span className="term-ext-switch-track" aria-hidden />
+          </label>
           <span className="term-sys-status">
             <i className="term-dot is-live" aria-hidden />
             Sistema Online
@@ -844,6 +962,10 @@ export function Dashboard() {
                   <>
                     Lay <span>over 2.5</span>
                   </>
+                ) : strategy === "over-limite-35" ? (
+                  <>
+                    Lay <span>over 3.5</span>
+                  </>
                 ) : (
                   <>
                     Lay <span>3x3</span>
@@ -855,16 +977,13 @@ export function Dashboard() {
               )}
             </div>
           </div>
-          <div className="main-head-actions">
-            {view === "evento" && (
+          {view === "evento" && (
+            <div className="main-head-actions">
               <button type="button" className="btn-secondary" onClick={() => goNav("jogos")}>
                 ← Voltar aos jogos
               </button>
-            )}
-            <button type="button" className="btn-icon" onClick={() => setTick((t) => t + 1)} title="Atualizar">
-              ↻
-            </button>
-          </div>
+            </div>
+          )}
         </header>
         )}
 
@@ -889,6 +1008,7 @@ export function Dashboard() {
                   className={`pill ${strategy === "lay-3x3" ? "active" : ""}`}
                   onClick={() => goStrategy("lay-3x3")}
                 >
+                  <Grid3x3 aria-hidden className="pill-icon" />
                   Lay 3x3
                 </button>
                 <button
@@ -896,13 +1016,23 @@ export function Dashboard() {
                   className={`pill ${strategy === "over-limite" ? "active" : ""}`}
                   onClick={() => goStrategy("over-limite")}
                 >
+                  <Target aria-hidden className="pill-icon" />
                   Lay over 2.5
+                </button>
+                <button
+                  type="button"
+                  className={`pill ${strategy === "over-limite-35" ? "active" : ""}`}
+                  onClick={() => goStrategy("over-limite-35")}
+                >
+                  <Target aria-hidden className="pill-icon" />
+                  Lay over 3.5
                 </button>
                 <button
                   type="button"
                   className={`pill ${!onlyLive ? "active" : ""}`}
                   onClick={() => setOnlyLive(false)}
                 >
+                  <List aria-hidden className="pill-icon" />
                   Todos
                 </button>
                 <button
@@ -910,14 +1040,16 @@ export function Dashboard() {
                   className={`pill ${onlyLive ? "active" : ""}`}
                   onClick={() => setOnlyLive(true)}
                 >
-                  <span className="dot-live" /> Ao vivo
+                  <Radio aria-hidden className="pill-icon pill-icon-live" />
+                  Ao vivo
                 </button>
                 <button
                   type="button"
                   className={`pill ${onlyFavorites ? "active" : ""}`}
                   onClick={() => setOnlyFavorites((v) => !v)}
                 >
-                  ★ Favoritos{favorites.length > 0 ? ` (${favorites.length})` : ""}
+                  <Star aria-hidden className="pill-icon" />
+                  Favoritos{favorites.length > 0 ? ` (${favorites.length})` : ""}
                 </button>
               </div>
               <label className="search-field">
@@ -935,21 +1067,25 @@ export function Dashboard() {
                 <div className="empty-icon" aria-hidden>
                   ≡
                 </div>
-                <strong>Nenhum filtro cadastrado para Lay over 2.5</strong>
+                <strong>Nenhum filtro cadastrado para Lay over {overLineForStrategy(strategy)}</strong>
                 <p>
                   Quando o filtro desta estratégia for cadastrado, os jogos
                   aparecerão aqui com as mesmas ferramentas da lista.
                 </p>
               </div>
             ) : (
-            <div className="match-board">
+            <div
+              className={`match-board ${isOverStrategy(strategy) ? "is-over-limite" : ""}`}
+            >
               <div className="match-board-head" aria-hidden>
-                <span>★</span>
-                <span>Tempo</span>
-                <span>Times</span>
-                <span>Sinais</span>
-                <span>Status</span>
-                <span>Mercado</span>
+                <span className="match-col-fav">★</span>
+                <span className="match-col-time">Tempo</span>
+                <span className="match-col-sides">Times</span>
+                <span className="match-col-inds">
+                  {isOverStrategy(strategy) ? "Filtros" : "Sinais"}
+                </span>
+                <span className="match-col-status">Status</span>
+                <span className="match-col-odds">Mercado</span>
               </div>
 
               {loading && games.length === 0 && (
@@ -962,8 +1098,8 @@ export function Dashboard() {
                     ≡
                   </div>
                   <strong>
-                    {strategy === "over-limite"
-                      ? "Nenhum Over 2.5 com book agora"
+                    {isOverStrategy(strategy)
+                      ? `Nenhum Over ${overLineForStrategy(strategy)} com book agora`
                       : onlyFavorites
                         ? "Nenhum favorito nesta lista"
                         : onlyLive
@@ -971,8 +1107,8 @@ export function Dashboard() {
                           : "Sem partidas com liquidez"}
                   </strong>
                   <p>
-                    {strategy === "over-limite"
-                      ? "A lista mostra jogos Over 2.5; a tese é lay contra o Over caçando correção e desajuste de odds."
+                    {isOverStrategy(strategy)
+                      ? `A lista mostra jogos Over ${overLineForStrategy(strategy)}; a tese é lay contra o Over caçando correção e desajuste de odds.`
                       : onlyFavorites
                         ? "Toque na estrela de um jogo para fixá-lo no topo e receber gols."
                         : onlyLive
@@ -1003,6 +1139,7 @@ export function Dashboard() {
                         home: row.analysis.home,
                         away: row.analysis.away,
                         competition: row.analysis.competition,
+                        start: row.analysis.start,
                       })
                     }
                     onOpen={() => openEvent(row.analysis.eventId)}
@@ -1089,14 +1226,14 @@ export function Dashboard() {
                 <span>
                   <strong>Auto ENVIAR na extensão</strong>
                   <em>
-                    No alerta ENTRAR, envia Lay com a odd do painel e a saída Back
-                    pela % da extensão.
+                    No alerta ENTRAR (3-3 / Over 2.5 / 3.5), envia Lay com a odd
+                    do painel e a saída Back pela % da extensão.
                   </em>
                 </span>
               </label>
               <p className="alertas-ext-hint">
                 {extAutoSend
-                  ? "Ligado — mantenha a extensão Bolsa Manual atualizada (v1.4+) e logada."
+                  ? "Ligado — mantenha a extensão Bolsa Manual atualizada (v1.6+) e logada (Lay 3-3 / Over 2.5 / 3.5)."
                   : "Desligado — marque para ligar o envio automático."}
               </p>
             </div>
@@ -1211,8 +1348,8 @@ export function Dashboard() {
                 <span>
                   <strong>Auto ENVIAR na extensão</strong>
                   <em>
-                    No alerta ENTRAR, envia Lay com a odd do painel. A saída Back
-                    usa o lucro % configurado na extensão.
+                    No alerta ENTRAR (Lay 3-3 / Over 2.5 / 3.5), envia Lay com a
+                    odd do painel. A saída Back usa o lucro % da extensão.
                   </em>
                 </span>
               </label>
@@ -1225,6 +1362,7 @@ export function Dashboard() {
             selected={selected}
             liveForSelected={liveForSelected}
             activeTrade={activeTrade}
+            strategy={strategy}
             detailOpen={detailOpen}
             favorited={isFavorite(selected.analysis.eventId)}
             onToggleFavorite={() =>
@@ -1233,6 +1371,7 @@ export function Dashboard() {
                 home: selected.analysis.home,
                 away: selected.analysis.away,
                 competition: selected.analysis.competition,
+                start: selected.analysis.start,
               })
             }
             onToggle={toggleDetail}
@@ -1259,6 +1398,31 @@ function formatLiveMinute(minute: number | null | undefined, status?: string) {
     return "—";
   }
   return `${Math.max(0, Math.floor(minute))}′`;
+}
+
+function indicatorToneLabel(tone: OverIndicatorTone): string {
+  switch (tone) {
+    case "good":
+      return "OK";
+    case "warn":
+      return "Atenção";
+    case "bad":
+      return "Fora";
+    default:
+      return "Aguardando";
+  }
+}
+
+function formatIndicatorValue(id: string, value: number): string {
+  if (id === "liquidity") return `R$ ${value.toFixed(0)}`;
+  if (id === "ticks" || id === "gap") {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  }
+  if (id === "oddsBand" || id === "misprice" || id === "correction") {
+    return value.toFixed(2);
+  }
+  if (Math.abs(value) >= 10) return value.toFixed(1);
+  return value.toFixed(2);
 }
 
 function LiveScoreBadge({
@@ -1310,7 +1474,14 @@ function GameRow({
 }) {
   const a = row.analysis;
   const plan = liveRow?.tradePlan ?? a.tradePlan;
-  const over = resolveOverLimite(row, liveRow);
+  const overStrategy = isOverStrategy(strategy);
+  const over = resolveOverLimite(row, liveRow, strategy);
+  const marketLabel = overStrategy
+    ? `Over ${over?.line ?? overLineForStrategy(strategy)}`
+    : "Placar Correto · 3-3";
+  const marketUrl = overStrategy
+    ? resolveOverMarketUrl(row, liveRow, strategy)
+    : row.mexchangeUrl;
   const live =
     liveRow?.live ??
     (enrichedLive
@@ -1322,32 +1493,33 @@ function GameRow({
         }
       : null);
   const isLive = Boolean(live);
-  const status =
-    strategy === "over-limite"
-      ? over?.settled
-        ? "ENCERRADO"
-        : over?.entryReady
+  const status = overStrategy
+    ? over?.settled
+      ? "ENCERRADO"
+      : over?.entryReady
         ? "ENTRAR"
         : over && over.goodCount >= 4
           ? "ALINHANDO"
           : "OVER"
-      : tradeStatus(plan);
+    : tradeStatus(plan);
   const statusKey = status.toLowerCase().replace(/[^a-z0-9]+/g, "");
   const [homeGoals, awayGoals] = splitScoreLabel(live?.scoreLabel);
   const pulse =
     status === "ENTRAR"
       ? "is-pulse-entrar"
-      : strategy !== "over-limite" &&
+      : !overStrategy &&
           (status === "CORRIGINDO" || status === "ALINHANDO")
         ? "is-pulse-corrigindo"
         : "";
-  const showStatus = strategy !== "over-limite" || status === "ENTRAR";
+  const showStatus = !overStrategy || status === "ENTRAR";
+  const overIndicators =
+    overStrategy && over && !over.settled ? over.indicators : [];
 
   return (
     <div
       role="button"
       tabIndex={0}
-      className={`match-card ${strategy === "over-limite" ? "is-over-limite" : ""} ${active ? "is-active" : ""} ${isLive ? "is-live" : ""} ${favorited ? "is-fav" : ""} ${pulse}`.trim()}
+      className={`match-card ${overStrategy ? "is-over-limite" : ""} ${active ? "is-active" : ""} ${isLive ? "is-live" : ""} ${favorited ? "is-fav" : ""} ${pulse}`.trim()}
       onClick={onOpen}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -1388,11 +1560,48 @@ function GameRow({
         </div>
       </div>
 
+      <div className="match-card-inds">
+        {overIndicators.map((indicator) => (
+          <span
+            key={indicator.id}
+            className={`match-ind match-ind-${indicator.tone}${indicator.good ? " is-good" : ""}`}
+            tabIndex={0}
+            aria-label={`${indicator.label}: ${indicator.detail}`}
+          >
+            <span className="match-ind-glyph" aria-hidden>
+              {indicator.icon}
+            </span>
+            <span className="match-ind-popup" role="tooltip">
+              <span className="match-ind-popup-head">
+                <span className="match-ind-popup-icon" aria-hidden>
+                  {indicator.icon}
+                </span>
+                <strong>{indicator.label}</strong>
+                <em className={`match-ind-popup-tone is-${indicator.tone}`}>
+                  {indicatorToneLabel(indicator.tone)}
+                </em>
+              </span>
+              <span className="match-ind-popup-detail">{indicator.detail}</span>
+              {indicator.value != null && Number.isFinite(indicator.value) && (
+                <span className="match-ind-popup-value">
+                  Valor: {formatIndicatorValue(indicator.id, indicator.value)}
+                </span>
+              )}
+            </span>
+          </span>
+        ))}
+      </div>
+
       <div
-        className={`match-card-status ${strategy === "over-limite" ? "is-over-limite" : ""}`}
+        className={`match-card-status ${overStrategy ? "is-over-limite" : ""}`}
       >
         {showStatus && (
           <span className={`status-chip status-${statusKey}`}>{status}</span>
+        )}
+        {overStrategy && over && !over.settled && (
+          <span className="match-ind-count">
+            {over.goodCount}/{over.indicators.length}
+          </span>
         )}
       </div>
 
@@ -1411,16 +1620,15 @@ function GameRow({
         </button>
         <OddsQuoteButtons
           backOdds={
-            strategy === "over-limite" ? over?.backOdds ?? a.over25 : a.quotes?.back.odds
+            overStrategy ? over?.backOdds ?? null : a.quotes?.back.odds
           }
-          backAmount={strategy === "over-limite" ? 0 : a.quotes?.back.amount ?? 0}
-          layOdds={
-            strategy === "over-limite" ? over?.layOdds ?? null : a.quotes?.lay.odds
-          }
+          backAmount={overStrategy ? 0 : a.quotes?.back.amount ?? 0}
+          layOdds={overStrategy ? over?.layOdds ?? null : a.quotes?.lay.odds}
           layAmount={
-            strategy === "over-limite" ? over?.layLiquidity ?? 0 : a.quotes?.lay.amount ?? 0
+            overStrategy ? over?.layLiquidity ?? 0 : a.quotes?.lay.amount ?? 0
           }
-          href={row.mexchangeUrl}
+          label={marketLabel}
+          href={marketUrl}
           size="sm"
         />
       </div>
@@ -1432,6 +1640,7 @@ function EventDetail({
   selected,
   liveForSelected,
   activeTrade,
+  strategy,
   detailOpen,
   favorited,
   onToggleFavorite,
@@ -1440,12 +1649,33 @@ function EventDetail({
   selected: OpportunityRow;
   liveForSelected?: LivePayload["rows"][number];
   activeTrade?: TradePlan;
+  strategy: StrategyId;
   detailOpen: Record<string, boolean>;
   favorited: boolean;
   onToggleFavorite: () => void;
   onToggle: (key: string) => void;
 }) {
   const a = selected.analysis;
+  const over = resolveOverLimite(selected, liveForSelected, strategy);
+  const isOverLimite = isOverStrategy(strategy);
+  const overStatus = over?.entryReady
+    ? "ENTRAR"
+    : over?.settled
+      ? "ENCERRADO"
+      : over && over.goodCount >= 4
+      ? "CORRIGINDO"
+      : "MONITORAR";
+  const marketLabel =
+    isOverLimite
+      ? `Over ${over?.line ?? overLineForStrategy(strategy)}`
+      : "Placar Correto · 3-3";
+  const marketUrl = isOverLimite
+    ? resolveOverMarketUrl(selected, liveForSelected, strategy)
+    : selected.mexchangeUrl;
+  const backOdds = isOverLimite ? over?.backOdds ?? null : a.quotes?.back.odds;
+  const layOdds = isOverLimite ? over?.layOdds ?? null : a.quotes?.lay.odds;
+  const backAmount = isOverLimite ? 0 : a.quotes?.back.amount ?? 0;
+  const layAmount = isOverLimite ? over?.layLiquidity ?? 0 : a.quotes?.lay.amount ?? 0;
 
   return (
     <div className="event-detail">
@@ -1480,51 +1710,101 @@ function EventDetail({
         </div>
         <div className="event-hero-actions">
           <OddsQuoteButtons
-            backOdds={a.quotes?.back.odds}
-            backAmount={a.quotes?.back.amount ?? 0}
-            layOdds={a.quotes?.lay.odds}
-            layAmount={a.quotes?.lay.amount ?? 0}
-            href={selected.mexchangeUrl}
+            label={marketLabel}
+            backOdds={backOdds}
+            backAmount={backAmount}
+            layOdds={layOdds}
+            layAmount={layAmount}
+            href={marketUrl}
             size="md"
           />
-          <a className="btn-primary" href={selected.mexchangeUrl} target="_blank" rel="noreferrer">
-            Abrir na BetBra
-          </a>
-          <span className={`status-chip status-${tradeStatus(activeTrade).toLowerCase()}`}>
-            {tradeStatus(activeTrade)}
+          {marketUrl ? (
+            <a className="btn-primary" href={marketUrl} target="_blank" rel="noreferrer">
+              Abrir na BetBra
+            </a>
+          ) : null}
+          <span
+            className={`status-chip status-${(isOverLimite
+              ? overStatus
+              : tradeStatus(activeTrade)
+            ).toLowerCase()}`}
+          >
+            {isOverLimite ? overStatus : tradeStatus(activeTrade)}
           </span>
         </div>
       </div>
 
       <div className="metric-strip">
         <div>
-          <span>Lay</span>
-          <strong>{activeTrade?.layOdds?.toFixed(0) ?? a.layOdds?.toFixed(0) ?? "—"}</strong>
-        </div>
-        <div>
-          <span>Alvo back</span>
-          <strong>{activeTrade?.targetBackOdds?.toFixed(0) ?? "—"}</strong>
-        </div>
-        <div>
-          <span>Score</span>
-          <strong>{a.score}</strong>
-        </div>
-        <div>
-          <span>BTTS / Over</span>
+          <span>{isOverLimite ? "Lay Over" : "Lay"}</span>
           <strong>
-            {a.bttsYes?.toFixed(2) ?? "—"} / {a.over25?.toFixed(2) ?? "—"}
+            {isOverLimite
+              ? over?.layOdds?.toFixed(2) ?? "—"
+              : activeTrade?.layOdds?.toFixed(0) ?? a.layOdds?.toFixed(0) ?? "—"}
+          </strong>
+        </div>
+        <div>
+          <span>{isOverLimite ? "Back alvo" : "Alvo back"}</span>
+          <strong>
+            {isOverLimite
+              ? over?.exitPlan?.targetBackOdds.toFixed(2) ?? "—"
+              : activeTrade?.targetBackOdds?.toFixed(0) ?? "—"}
+          </strong>
+        </div>
+        <div>
+          <span>{isOverLimite ? "Liquidez lay" : "Score"}</span>
+          <strong>
+            {isOverLimite ? `R$ ${over?.layLiquidity.toFixed(0) ?? "—"}` : a.score}
+          </strong>
+        </div>
+        <div>
+          <span>{isOverLimite ? "Indicadores" : "BTTS / Over"}</span>
+          <strong>
+            {isOverLimite
+              ? `${over?.goodCount ?? 0}/${over?.indicators.length ?? 0}`
+              : `${a.bttsYes?.toFixed(2) ?? "—"} / ${a.over25?.toFixed(2) ?? "—"}`}
           </strong>
         </div>
       </div>
 
       <div className="detail-stack">
         <CollapsePanel
-          title="Plano de trade"
-          subtitle={activeTrade?.summary ?? "Lay 3-3 e saída no back"}
+          title={isOverLimite ? `Plano · Lay Over ${over?.line ?? overLineForStrategy(strategy)}` : "Plano de trade"}
+          subtitle={
+            isOverLimite
+              ? over?.summary ?? "Aguardando leitura do mercado Over"
+              : activeTrade?.summary ?? "Lay 3-3 e saída no back"
+          }
           open={detailOpen.trade}
           onToggle={() => onToggle("trade")}
-          badge={<span className="tag tag-watch">{tradeStatus(activeTrade)}</span>}
+          badge={
+            <span className="tag tag-watch">
+              {isOverLimite ? overStatus : tradeStatus(activeTrade)}
+            </span>
+          }
         >
+          {isOverLimite ? (
+            <div className="signals">
+              {over?.exitPlan && (
+                <p className="trade-oscillation">
+                  Saída estimada: {over.exitPlan.summary} · confiança {over.exitPlan.confidence}
+                </p>
+              )}
+              {(over?.indicators ?? []).map((indicator) => (
+                <article key={indicator.id} className={`signal level-${indicator.tone}`}>
+                  <header>
+                    <strong>
+                      {indicator.icon} {indicator.label}
+                    </strong>
+                    <span>{indicator.good ? "OK" : "—"}</span>
+                  </header>
+                  <p>{indicator.detail}</p>
+                </article>
+              ))}
+              {!over && <p className="empty">Mercado Over indisponível no momento.</p>}
+            </div>
+          ) : (
+            <>
               {activeTrade?.example && (
                 <p className="trade-example">
                   Ex. stake R$ {activeTrade.example.layStake}: liability R${" "}
@@ -1564,10 +1844,12 @@ function EventDetail({
                     : ""}
                 </p>
               )}
+            </>
+          )}
         </CollapsePanel>
 
         <CollapsePanel
-          title="Confirmação live"
+          title={isOverLimite ? "Leitura ao vivo" : "Confirmação live"}
           subtitle={
             liveForSelected?.live
               ? `${liveForSelected.live.scoreLabel} · ${liveForSelected.live.minute ?? "?"}′`
@@ -1592,7 +1874,7 @@ function EventDetail({
                   <span className="tag">monitorando</span>
                 )}
               </p>
-              {liveForSelected.reasons?.length ? (
+              {!isOverLimite && liveForSelected.reasons?.length ? (
                 <ul>
                   {liveForSelected.reasons.map((r) => (
                     <li key={r}>{r}</li>
@@ -1605,14 +1887,16 @@ function EventDetail({
           )}
         </CollapsePanel>
 
-        <CollapsePanel
-          title="Análise de momento"
-          subtitle="Pré × live × fluidez × correção"
-          open={detailOpen.moment}
-          onToggle={() => onToggle("moment")}
-        >
-          <MomentAnalysisCard eventId={a.eventId} />
-        </CollapsePanel>
+        {!isOverLimite && (
+          <CollapsePanel
+            title="Análise de momento"
+            subtitle="Pré × live × fluidez × correção"
+            open={detailOpen.moment}
+            onToggle={() => onToggle("moment")}
+          >
+            <MomentAnalysisCard eventId={a.eventId} />
+          </CollapsePanel>
+        )}
 
         <CollapsePanel
           title="xG & pressão"
@@ -1623,24 +1907,26 @@ function EventDetail({
           <MatchIntelCard home={a.home} away={a.away} start={a.start} />
         </CollapsePanel>
 
-        <CollapsePanel
-          title="Sinais pré-live"
-          subtitle={`Score ${a.score}/100`}
-          open={detailOpen.signals}
-          onToggle={() => onToggle("signals")}
-        >
-          <div className="signals">
-            {a.signals.map((s) => (
-              <article key={s.id} className={`signal level-${s.level}`}>
-                <header>
-                  <strong>{s.label}</strong>
-                  <span>{s.score}</span>
-                </header>
-                <p>{s.detail}</p>
-              </article>
-            ))}
-          </div>
-        </CollapsePanel>
+        {!isOverLimite && (
+          <CollapsePanel
+            title="Sinais pré-live"
+            subtitle={`Score ${a.score}/100`}
+            open={detailOpen.signals}
+            onToggle={() => onToggle("signals")}
+          >
+            <div className="signals">
+              {a.signals.map((s) => (
+                <article key={s.id} className={`signal level-${s.level}`}>
+                  <header>
+                    <strong>{s.label}</strong>
+                    <span>{s.score}</span>
+                  </header>
+                  <p>{s.detail}</p>
+                </article>
+              ))}
+            </div>
+          </CollapsePanel>
+        )}
 
         <CollapsePanel
           title="Gráfico odd & volume"
@@ -1649,11 +1935,15 @@ function EventDetail({
           onToggle={() => onToggle("chart")}
         >
           <OddsVolumeChart
-            runnerId={a.runnerId}
-            marketId={a.marketId}
+            runnerId={isOverLimite ? over?.runnerId : a.runnerId}
+            marketId={isOverLimite ? over?.marketId : a.marketId}
             eventId={a.eventId}
-            layOddsHint={a.layOdds}
-            title={`Odd 3-3 · ${a.home} vs ${a.away}`}
+            layOddsHint={isOverLimite ? over?.layOdds : a.layOdds}
+            title={
+              isOverLimite
+                ? `Odd Over ${over?.line ?? overLineForStrategy(strategy)} · ${a.home} vs ${a.away}`
+                : `Odd 3-3 · ${a.home} vs ${a.away}`
+            }
           />
         </CollapsePanel>
       </div>
