@@ -60,6 +60,7 @@ type EventosRarosSnap = {
     runnerId?: string;
     marketId?: string;
     entryReady?: boolean;
+    alreadyImpossible?: boolean;
   }>;
   marketId?: string;
   runnerId?: string;
@@ -524,12 +525,17 @@ export function useLiveAlerts(
           erEntries.length > 1
             ? ` · ${erEntries.length} placares no evento`
             : "";
+        const immediate = Boolean(entry.alreadyImpossible);
         pushAlert({
           kind: "enter",
           title: `ENTRAR · EVENTOS RAROS · ${score} · ${name}`,
           body: label
-            ? `${label}${minute} · lay ${score} x${entryOdds > 1 ? entryOdds : "?"} · hold${multiHint}`
-            : `Lay ${score}${minute}${entryOdds > 1 ? ` · x${entryOdds}` : ""} · hold${multiHint}`,
+            ? `${label}${minute} · lay ${score} x${entryOdds > 1 ? entryOdds : "?"}${
+                immediate ? " · IMEDIATO (já impossível)" : " · hold"
+              }${multiHint}`
+            : `Lay ${score}${minute}${entryOdds > 1 ? ` · x${entryOdds}` : ""}${
+                immediate ? " · IMEDIATO" : " · hold"
+              }${multiHint}`,
           tag: `tips3x3-enter-er-${id}-${score}-${Date.now()}`,
         });
         sendToExtension(row, {

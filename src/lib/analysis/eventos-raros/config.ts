@@ -30,6 +30,15 @@ export const EVENTOS_RAROS = {
    * CS compartilha saldo/mercado — várias lays no mesmo book são ok.
    */
   maxEntriesPerEvent: 8,
+  /**
+   * Placar já impossível (ex.: live 4-2 → lay 3-2): entrada imediata,
+   * sem janela late / gate de tempo.
+   */
+  alreadyImpossible: {
+    enabled: true,
+    /** Prioridade máxima no ranking. */
+    rarityBonus: 200,
+  },
   exit: "hold" as const,
 } as const;
 

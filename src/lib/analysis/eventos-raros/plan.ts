@@ -48,7 +48,7 @@ function remainingFraction(minute: number): number {
 
 /**
  * P(exato alvo | placar atual) com λ restantes = λ90 × fração restante.
- * Independente se needed=0 (já bateu) → 1.
+ * Independente se needed=0 (já bateu) → 1. Impossível → 0.
  */
 function modelExactScoreProb(opts: {
   targetHome: number;
@@ -92,12 +92,18 @@ function isTimeBlocked(
 }
 
 function rarityScore(c: {
+  alreadyImpossible: boolean;
   timeBlocked: boolean;
   minute: number | null;
   layOdds: number;
   modelProb: number | null;
   stillPossible: boolean;
 }): number {
+  if (c.alreadyImpossible) {
+    let s = EVENTOS_RAROS.alreadyImpossible.rarityBonus;
+    s += Math.min(20, Math.log10(Math.max(c.layOdds, 100)) * 10);
+    return s;
+  }
   if (!c.stillPossible) return -1e9;
   let s = 0;
   if (c.timeBlocked) s += 40;
@@ -109,14 +115,11 @@ function rarityScore(c: {
   return s;
 }
 
-/** Gate por placar (mesmo evento pode liberar vários). */
-function candidateEntryReady(
-  c: Omit<EventosRarosCandidate, "entryReady">,
-  eventOk: boolean,
-): boolean {
-  if (!eventOk) return false;
-  if (!c.stillPossible || c.settledHit) return false;
-  if (!c.timeBlocked) return false;
+function bookOk(c: {
+  layOdds: number;
+  liquidity: number;
+  gapTicks: number | null;
+}): boolean {
   if (!(c.layOdds >= EVENTOS_RAROS.minLayOdds)) return false;
   if (c.layOdds > EVENTOS_RAROS.oddsBand.max) return false;
   if (c.liquidity < EVENTOS_RAROS.minLayLiquidity) return false;
@@ -126,7 +129,30 @@ function candidateEntryReady(
   ) {
     return false;
   }
-  // Modelo disponível e contra o lay → bloqueia só este placar
+  return true;
+}
+
+/**
+ * Gate por placar.
+ * - alreadyImpossible: entrada imediata (só book + live)
+ * - stillPossible: precisa late + time-gate B (+ modelo se disponível)
+ */
+function candidateEntryReady(
+  c: Omit<EventosRarosCandidate, "entryReady">,
+  eventLiveOk: boolean,
+  eventLateOk: boolean,
+): boolean {
+  if (c.settledHit) return false;
+  if (!bookOk(c)) return false;
+
+  if (c.alreadyImpossible && EVENTOS_RAROS.alreadyImpossible.enabled) {
+    return eventLiveOk;
+  }
+
+  if (!eventLateOk) return false;
+  if (!c.stillPossible) return false;
+  if (!c.timeBlocked) return false;
+
   if (
     c.modelProb != null &&
     c.modelEdge != null &&
@@ -160,9 +186,21 @@ function buildLiquidityIndicator(
 
 function buildLateWindowIndicator(
   minute: number | null,
+  hasImpossibleEntry: boolean,
 ): EventosRarosIndicator {
   const m = EVENTOS_RAROS_INDICATOR_META["late-window"];
   const { min, max } = EVENTOS_RAROS.minute;
+  if (hasImpossibleEntry) {
+    return {
+      id: "late-window",
+      label: m.label,
+      icon: m.icon,
+      tone: "good",
+      good: true,
+      detail: "Placar já impossível — entrada imediata (sem janela late)",
+      value: minute,
+    };
+  }
   if (minute == null) {
     return {
       id: "late-window",
@@ -194,6 +232,17 @@ function buildTimeImpossibilityIndicator(
   entryCount: number,
 ): EventosRarosIndicator {
   const m = EVENTOS_RAROS_INDICATOR_META["time-impossibility"];
+  if (best?.alreadyImpossible) {
+    return {
+      id: "time-impossibility",
+      label: m.label,
+      icon: m.icon,
+      tone: "good",
+      good: true,
+      detail: `Placar ${best.label} já impossível pelo live — lay imediato`,
+      value: 0,
+    };
+  }
   if (!best || !best.stillPossible) {
     return {
       id: "time-impossibility",
@@ -232,6 +281,17 @@ function buildModelEdgeIndicator(
   best: EventosRarosCandidate | null,
 ): EventosRarosIndicator {
   const m = EVENTOS_RAROS_INDICATOR_META["model-edge"];
+  if (best?.alreadyImpossible) {
+    return {
+      id: "model-edge",
+      label: m.label,
+      icon: m.icon,
+      tone: "good",
+      good: true,
+      detail: `P modelo 0% (impossível) ≪ implícita ${(best.impliedProb * 100).toFixed(2)}%`,
+      value: best.impliedProb,
+    };
+  }
   if (!best || best.modelProb == null || best.modelEdge == null) {
     return {
       id: "model-edge",
@@ -316,7 +376,6 @@ export function buildEventosRarosSnapshot(opts: {
   const blockers: string[] = [];
 
   if (!isLive) blockers.push("Somente live");
-  if (minute == null) blockers.push("Sem minuto live");
   if (hs == null || as == null) blockers.push("Sem placar live");
 
   const remainingMinutes =
@@ -329,26 +388,34 @@ export function buildEventosRarosSnapshot(opts: {
     minute >= EVENTOS_RAROS.minute.min &&
     minute <= EVENTOS_RAROS.minute.max;
 
-  if (minute != null && !minuteInWindow) {
+  /** Live + placar — basta para placares já impossíveis. */
+  const eventLiveOk = isLive && hs != null && as != null;
+
+  /** Late + forma — só para candidatos ainda possíveis. */
+  const eventLateOk =
+    eventLiveOk &&
+    minute != null &&
+    minuteInWindow &&
+    !(projected != null && projected > EVENTOS_RAROS.maxProjectedTotal);
+
+  if (
+    eventLiveOk &&
+    !eventLateOk &&
+    minute != null &&
+    !minuteInWindow
+  ) {
+    // Só relevante se não houver impossível; senão não bloqueia o snapshot.
     blockers.push(
-      `Minuto fora ${EVENTOS_RAROS.minute.min}–${EVENTOS_RAROS.minute.max}'`,
+      `Minuto fora ${EVENTOS_RAROS.minute.min}–${EVENTOS_RAROS.minute.max}' (só late)`,
     );
   }
   if (
+    eventLiveOk &&
     projected != null &&
     projected > EVENTOS_RAROS.maxProjectedTotal
   ) {
-    blockers.push(`Projeção alta (~${projected.toFixed(1)})`);
+    blockers.push(`Projeção alta (~${projected.toFixed(1)}) (só late)`);
   }
-
-  /** Gates do evento (compartilhados); placares avaliam o resto individualmente. */
-  const eventOk =
-    isLive &&
-    minute != null &&
-    hs != null &&
-    as != null &&
-    minuteInWindow &&
-    !(projected != null && projected > EVENTOS_RAROS.maxProjectedTotal);
 
   const analyzedBase: Array<Omit<EventosRarosCandidate, "entryReady">> = [];
 
@@ -363,6 +430,12 @@ export function buildEventosRarosSnapshot(opts: {
     const gap = gapTicks(raw.backOdds, raw.layOdds);
     const settledHit =
       hs != null && as != null && hs === raw.home && as === raw.away;
+    /** Live já passou do alvo (ex. 4-2 vs 3-2). */
+    const alreadyImpossible =
+      !settledHit &&
+      hs != null &&
+      as != null &&
+      (hs > raw.home || as > raw.away);
     const stillPossible =
       hs != null &&
       as != null &&
@@ -372,13 +445,15 @@ export function buildEventosRarosSnapshot(opts: {
     const goalsNeeded =
       hs != null && as != null && stillPossible
         ? raw.home - hs + (raw.away - as)
-        : settledHit
+        : settledHit || alreadyImpossible
           ? 0
           : Number.POSITIVE_INFINITY;
     const goalsPerRemainingMin =
       Number.isFinite(goalsNeeded) && stillPossible
         ? goalsNeeded / remainingMinutes
-        : null;
+        : alreadyImpossible
+          ? 0
+          : null;
     const timeBlocked =
       stillPossible &&
       minute != null &&
@@ -386,8 +461,9 @@ export function buildEventosRarosSnapshot(opts: {
       isTimeBlocked(goalsNeeded, remainingMinutes, minute);
 
     const impliedProb = 1 / raw.layOdds;
-    const modelProb =
-      stillPossible && hs != null && as != null && minute != null
+    const modelProb = alreadyImpossible
+      ? 0
+      : stillPossible && hs != null && as != null && minute != null
         ? modelExactScoreProb({
             targetHome: raw.home,
             targetAway: raw.away,
@@ -413,15 +489,17 @@ export function buildEventosRarosSnapshot(opts: {
       liquidity: raw.layLiquidity,
       gapTicks: gap,
       stillPossible,
+      alreadyImpossible,
       settledHit,
       goalsNeeded: Number.isFinite(goalsNeeded) ? goalsNeeded : -1,
       remainingMinutes,
       goalsPerRemainingMin,
-      timeBlocked,
+      timeBlocked: alreadyImpossible ? true : timeBlocked,
       impliedProb,
       modelProb,
       modelEdge,
       rarityScore: rarityScore({
+        alreadyImpossible,
         timeBlocked,
         minute,
         layOdds: raw.layOdds,
@@ -435,14 +513,13 @@ export function buildEventosRarosSnapshot(opts: {
 
   const analyzed: EventosRarosCandidate[] = analyzedBase.map((c) => ({
     ...c,
-    entryReady: candidateEntryReady(c, eventOk),
+    entryReady: candidateEntryReady(c, eventLiveOk, eventLateOk),
   }));
 
   const entries = analyzed
     .filter((c) => c.entryReady)
     .slice(0, EVENTOS_RAROS.maxEntriesPerEvent);
 
-  // Marca entryReady=false nos que passaram do teto (mantém ordem de raridade)
   if (entries.length < analyzed.filter((c) => c.entryReady).length) {
     const keep = new Set(entries.map((e) => e.label));
     for (const c of analyzed) {
@@ -453,11 +530,15 @@ export function buildEventosRarosSnapshot(opts: {
   const top = analyzed.slice(0, EVENTOS_RAROS.topN);
   const hitSettled = analyzed.some((c) => c.settledHit);
   const bestReady = entries[0] ?? null;
+  const bestImpossible =
+    analyzed.find((c) => c.alreadyImpossible) ?? null;
   const bestPossible =
     analyzed.find((c) => c.stillPossible) ?? null;
-  const best = bestReady ?? bestPossible ?? top[0] ?? null;
+  const best =
+    bestReady ?? bestImpossible ?? bestPossible ?? top[0] ?? null;
 
-  const lateInd = buildLateWindowIndicator(minute);
+  const hasImpossibleEntry = entries.some((e) => e.alreadyImpossible);
+  const lateInd = buildLateWindowIndicator(minute, hasImpossibleEntry);
   const liqInd = buildLiquidityIndicator(
     bestReady?.liquidity ?? best?.liquidity ?? 0,
   );
@@ -470,26 +551,42 @@ export function buildEventosRarosSnapshot(opts: {
     edgeInd,
   ];
 
-  if (!best || analyzed.length === 0) {
-    blockers.push("Sem CS com lay ≥ 100");
-  }
-  if (best && !best.stillPossible && !hitSettled) {
-    blockers.push("Nenhum placar alto ainda possível");
-  }
-  if (
-    eventOk &&
-    bestPossible &&
-    entries.length === 0 &&
-    bestPossible.stillPossible &&
-    !bestPossible.timeBlocked
-  ) {
-    blockers.push("Tempo ainda permite o placar (sem gate B)");
-  }
-  if (eventOk && analyzed.length > 0 && entries.length === 0 && !liqInd.good) {
-    blockers.push(liqInd.detail);
+  // Blockers: não poluir se já há entrada impossível pronta
+  if (!hasImpossibleEntry) {
+    if (!best || analyzed.length === 0) {
+      blockers.push("Sem CS com lay ≥ 100");
+    }
+    if (
+      best &&
+      !best.stillPossible &&
+      !best.alreadyImpossible &&
+      !hitSettled
+    ) {
+      blockers.push("Nenhum placar alto ainda possível / impossível");
+    }
+    if (
+      eventLateOk &&
+      bestPossible &&
+      entries.length === 0 &&
+      bestPossible.stillPossible &&
+      !bestPossible.timeBlocked
+    ) {
+      blockers.push("Tempo ainda permite o placar (sem gate B)");
+    }
+    if (
+      eventLiveOk &&
+      analyzed.length > 0 &&
+      entries.length === 0 &&
+      !liqInd.good
+    ) {
+      blockers.push(liqInd.detail);
+    }
+  } else {
+    // Limpa blockers de late que não se aplicam
+    blockers.length = 0;
   }
 
-  const settled = hitSettled && !bestPossible;
+  const settled = hitSettled && !bestPossible && !bestImpossible;
   const goodCount = settled
     ? 0
     : indicators.filter((i) => i.good).length;
@@ -501,20 +598,29 @@ export function buildEventosRarosSnapshot(opts: {
   const summary = settled
     ? `Eventos raros: placar ${analyzed.find((c) => c.settledHit)?.label ?? "?"} saiu — lay settled.`
     : entryReady
-      ? entries.length > 1
-        ? `Lay ${scoreLabels.join(", ")} (${entries.length} placares) · mesmo saldo CS · Hold até settle`
-        : `Lay ${bestReady!.label} x${bestReady!.layOdds.toFixed(0)} · +${bestReady!.goalsNeeded} gols / ${bestReady!.remainingMinutes.toFixed(0)}' · Hold até settle`
+      ? hasImpossibleEntry
+        ? entries.length > 1
+          ? `IMEDIATO · Lay ${scoreLabels.join(", ")} (já impossíveis) · Hold`
+          : `IMEDIATO · Lay ${bestReady!.label} x${bestReady!.layOdds.toFixed(0)} · placar live já invalida · Hold`
+        : entries.length > 1
+          ? `Lay ${scoreLabels.join(", ")} (${entries.length} placares) · mesmo saldo CS · Hold até settle`
+          : `Lay ${bestReady!.label} x${bestReady!.layOdds.toFixed(0)} · +${bestReady!.goalsNeeded} gols / ${bestReady!.remainingMinutes.toFixed(0)}' · Hold até settle`
       : blockers.length
         ? `Eventos raros · ${blockers.slice(0, 2).join(" · ")}`
-        : best?.stillPossible
-          ? `Watch ${best.label} lay ${best.layOdds.toFixed(0)} · +${best.goalsNeeded} gols`
-          : "Sem candidato CS raro";
+        : best?.alreadyImpossible
+          ? `Watch impossível ${best.label} lay ${best.layOdds.toFixed(0)}`
+          : best?.stillPossible
+            ? `Watch ${best.label} lay ${best.layOdds.toFixed(0)} · +${best.goalsNeeded} gols`
+            : "Sem candidato CS raro";
 
   return {
     settled,
     marketId: bestReady?.marketId ?? best?.marketId,
     runnerId: bestReady?.runnerId ?? best?.runnerId,
-    best: best?.stillPossible || best?.settledHit ? best : null,
+    best:
+      best?.stillPossible || best?.settledHit || best?.alreadyImpossible
+        ? best
+        : null,
     entries,
     candidates: top,
     layOdds: bestReady?.layOdds ?? best?.layOdds ?? null,

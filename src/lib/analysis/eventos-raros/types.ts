@@ -29,6 +29,11 @@ export interface EventosRarosCandidate {
   gapTicks: number | null;
   /** Ainda matematicamente possível dado o placar live. */
   stillPossible: boolean;
+  /**
+   * Placar alvo já impossível (ex.: live 4-2 e alvo 3-2).
+   * Lay é green certo se o mercado ainda aceitar — entrada imediata.
+   */
+  alreadyImpossible: boolean;
   /** Placar live já bateu o alvo (lay perde). */
   settledHit: boolean;
   goalsNeeded: number;

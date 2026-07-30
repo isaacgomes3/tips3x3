@@ -184,6 +184,7 @@ type EventosRarosSnapshot = {
     impliedProb: number;
     modelProb: number | null;
     stillPossible: boolean;
+    alreadyImpossible?: boolean;
     entryReady?: boolean;
   } | null;
   entries: Array<{
@@ -195,6 +196,7 @@ type EventosRarosSnapshot = {
     remainingMinutes: number;
     timeBlocked: boolean;
     stillPossible: boolean;
+    alreadyImpossible?: boolean;
     impliedProb: number;
     modelProb: number | null;
     entryReady?: boolean;
@@ -208,6 +210,7 @@ type EventosRarosSnapshot = {
     remainingMinutes: number;
     timeBlocked: boolean;
     stillPossible: boolean;
+    alreadyImpossible?: boolean;
     impliedProb: number;
     modelProb: number | null;
     entryReady?: boolean;
@@ -1629,9 +1632,13 @@ function GameRow({
   const marketLabel = qovStrategy
     ? "QOV · Lay zebra"
     : erStrategy
-      ? er?.entries && er.entries.length > 1
-        ? `CS · ${er.entries.length} placares`
-        : `CS · ${er?.scoreLabel ?? "raro"}`
+      ? er?.entries?.some((e) => e.alreadyImpossible)
+        ? er.entries.length > 1
+          ? `CS · IMEDIATO · ${er.entries.length}`
+          : `CS · IMEDIATO · ${er?.scoreLabel ?? "raro"}`
+        : er?.entries && er.entries.length > 1
+          ? `CS · ${er.entries.length} placares`
+          : `CS · ${er?.scoreLabel ?? "raro"}`
       : "Placar Correto · 3-3";
   const marketUrl = qovStrategy
     ? liveRow?.qovMexchangeUrl ?? row.qovMexchangeUrl ?? row.mexchangeUrl
@@ -2097,21 +2104,30 @@ function EventDetail({
                 </article>
               ))}
               {(er?.candidates ?? [])
-                .filter((c) => c.stillPossible && !c.entryReady)
+                .filter(
+                  (c) =>
+                    !c.entryReady &&
+                    (c.stillPossible || c.alreadyImpossible),
+                )
                 .slice(0, 5)
                 .map((c) => (
                   <article
                     key={c.label}
-                    className={`signal level-${c.timeBlocked ? "good" : "warn"}`}
+                    className={`signal level-${
+                      c.alreadyImpossible || c.timeBlocked ? "good" : "warn"
+                    }`}
                   >
                     <header>
                       <strong>{c.label}</strong>
                       <span>lay {c.layOdds.toFixed(0)}</span>
                     </header>
                     <p>
-                      +{c.goalsNeeded} gols · {c.remainingMinutes.toFixed(0)}&apos;
-                      {c.timeBlocked ? " · tempo bloqueia" : " · watch"}
-                      {c.modelProb != null
+                      {c.alreadyImpossible
+                        ? "já impossível · entrada imediata se book ok"
+                        : `+${c.goalsNeeded} gols · ${c.remainingMinutes.toFixed(0)}'${
+                            c.timeBlocked ? " · tempo bloqueia" : " · watch"
+                          }`}
+                      {!c.alreadyImpossible && c.modelProb != null
                         ? ` · P ${(c.modelProb * 100).toFixed(2)}%`
                         : ""}
                     </p>
