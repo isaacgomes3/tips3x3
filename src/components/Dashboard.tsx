@@ -571,6 +571,67 @@ function alertBadgeLabel(
   return short.slice(0, 14).toUpperCase();
 }
 
+function alertMarketLabel(
+  alert: LivePayload["alerts"][number],
+  row?: LivePayload["rows"][number],
+) {
+  const id = alert.id.toLowerCase();
+  const title = alert.title.toUpperCase();
+  const er = row?.eventosRaros ?? row?.analysis.eventosRaros;
+  const qov = row?.qovLayUnderdog ?? row?.analysis.qovLayUnderdog;
+  const plan = row?.tradePlan ?? row?.analysis.tradePlan;
+
+  if (
+    id.includes("eventos-raros") ||
+    id.includes("raros") ||
+    title.includes("EVENTOS RAROS") ||
+    title.includes("RAROS")
+  ) {
+    const labels =
+      er?.scoreLabels && er.scoreLabels.length > 0
+        ? er.scoreLabels.join(", ")
+        : er?.scoreLabel;
+    const odds = er?.layOdds != null ? ` @ ${er.layOdds.toFixed(0)}` : "";
+    return labels
+      ? `Eventos raros · CS ${labels}${odds}`
+      : `Eventos raros · CS lay${odds}`;
+  }
+
+  if (id.includes("qov") || title.includes("QOV") || title.includes("ZEBRA")) {
+    const odds =
+      qov?.entryOdds != null
+        ? ` @ ${qov.entryOdds.toFixed(2)}`
+        : qov?.layOdds != null
+          ? ` @ ${qov.layOdds.toFixed(2)}`
+          : "";
+    return `Lay QOV zebra${odds}`;
+  }
+
+  if (
+    id.includes("trade") ||
+    title.includes("LAY 3-3") ||
+    title.includes("CORREÇÃO") ||
+    title.includes("JANELA")
+  ) {
+    const odds = plan?.layOdds != null ? ` @ ${plan.layOdds.toFixed(0)}` : "";
+    return `Lay 3x3 · placar 3-3${odds}`;
+  }
+
+  if (er?.entryReady) {
+    const labels =
+      er.scoreLabels && er.scoreLabels.length > 0
+        ? er.scoreLabels.join(", ")
+        : er.scoreLabel;
+    return labels ? `Eventos raros · CS ${labels}` : "Eventos raros · CS lay";
+  }
+  if (qov?.entryReady) return "Lay QOV zebra";
+  if (plan?.entryReady || plan?.inEntryWindow) {
+    return "Lay 3x3 · placar 3-3";
+  }
+
+  return alert.message?.replace(/^[^:]+:\s*/, "").slice(0, 64) || "Mercado ao vivo";
+}
+
 function resolveAlertLink(
   alert: LivePayload["alerts"][number],
   row?: LivePayload["rows"][number],
@@ -970,12 +1031,8 @@ export function Dashboard() {
       )
       .map((alert) => {
         const row = rowsById.get(alert.eventId);
-        const home = row?.analysis.home;
-        const away = row?.analysis.away;
         const eventName =
           alert.eventName ?? row?.analysis.eventName ?? "Evento ao vivo";
-        const subtitle =
-          home && away ? `${home} vs ${away}` : alert.message || eventName;
         const href = resolveAlertLink(alert, row);
         return {
           id: alert.id,
@@ -983,7 +1040,7 @@ export function Dashboard() {
           badge: alertBadgeLabel(alert, row),
           eventId: alert.eventId,
           eventName,
-          subtitle,
+          subtitle: alertMarketLabel(alert, row),
           scoreLabel: row?.live?.scoreLabel,
           minute: row?.live?.minute,
           status: row?.live?.status,
