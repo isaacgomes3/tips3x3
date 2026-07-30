@@ -1634,8 +1634,8 @@ function GameRow({
     : erStrategy
       ? er?.entries?.some((e) => e.alreadyImpossible)
         ? er.entries.length > 1
-          ? `CS · IMEDIATO · ${er.entries.length}`
-          : `CS · IMEDIATO · ${er?.scoreLabel ?? "raro"}`
+          ? `CS · LUCRO CERTO · ${er.entries.length}`
+          : `CS · LUCRO CERTO · ${er?.scoreLabel ?? "raro"}`
         : er?.entries && er.entries.length > 1
           ? `CS · ${er.entries.length} placares`
           : `CS · ${er?.scoreLabel ?? "raro"}`
@@ -1669,22 +1669,25 @@ function GameRow({
     : erStrategy
       ? er?.settled
         ? "ENCERRADO"
-        : er?.entryReady
-          ? "ENTRAR"
-          : er && er.goodCount >= 1
-            ? "ALINHANDO"
-            : "RARO"
+        : er?.entryReady && er.entries?.some((e) => e.alreadyImpossible)
+          ? "LUCRO CERTO"
+          : er?.entryReady
+            ? "ENTRAR"
+            : er && er.goodCount >= 1
+              ? "ALINHANDO"
+              : "RARO"
       : tradeStatus(plan);
   const statusKey = status.toLowerCase().replace(/[^a-z0-9]+/g, "");
   const [homeGoals, awayGoals] = splitScoreLabel(live?.scoreLabel);
   const pulse =
-    status === "ENTRAR"
+    status === "ENTRAR" || status === "LUCRO CERTO"
       ? "is-pulse-entrar"
       : !indicatorStrategy &&
           (status === "CORRIGINDO" || status === "ALINHANDO")
         ? "is-pulse-corrigindo"
         : "";
-  const showStatus = !indicatorStrategy || status === "ENTRAR";
+  const showStatus =
+    !indicatorStrategy || status === "ENTRAR" || status === "LUCRO CERTO";
   const rowIndicators = qovStrategy && qov && !qov.settled
     ? qov.indicators
     : erStrategy && er && !er.settled
@@ -2123,7 +2126,7 @@ function EventDetail({
                     </header>
                     <p>
                       {c.alreadyImpossible
-                        ? "já impossível · entrada imediata se book ok"
+                        ? "LUCRO CERTO · placar live já invalida"
                         : `+${c.goalsNeeded} gols · ${c.remainingMinutes.toFixed(0)}'${
                             c.timeBlocked ? " · tempo bloqueia" : " · watch"
                           }`}

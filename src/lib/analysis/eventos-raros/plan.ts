@@ -208,7 +208,7 @@ function buildLateWindowIndicator(
       icon: m.icon,
       tone: "good",
       good: true,
-      detail: "Placar já impossível — entrada imediata (sem janela late)",
+      detail: "LUCRO CERTO · placar já impossível (sem janela late)",
       value: minute,
     };
   }
@@ -250,7 +250,7 @@ function buildTimeImpossibilityIndicator(
       icon: m.icon,
       tone: "good",
       good: true,
-      detail: `Placar ${best.label} já impossível pelo live — lay imediato`,
+      detail: `LUCRO CERTO · ${best.label} já impossível pelo live`,
       value: 0,
     };
   }
@@ -616,15 +616,15 @@ export function buildEventosRarosSnapshot(opts: {
     : entryReady
       ? hasImpossibleEntry
         ? entries.length > 1
-          ? `IMEDIATO · Lay ${scoreLabels.join(", ")} (já impossíveis) · Hold`
-          : `IMEDIATO · Lay ${bestReady!.label} x${bestReady!.layOdds.toFixed(0)} · placar live já invalida · Hold`
+          ? `LUCRO CERTO · Lay ${scoreLabels.join(", ")} (já impossíveis) · Hold`
+          : `LUCRO CERTO · Lay ${bestReady!.label} x${bestReady!.layOdds.toFixed(0)} · placar live já invalida · Hold`
         : entries.length > 1
           ? `Lay ${scoreLabels.join(", ")} (${entries.length} placares) · mesmo saldo CS · Hold até settle`
           : `Lay ${bestReady!.label} x${bestReady!.layOdds.toFixed(0)} · +${bestReady!.goalsNeeded} gols / ${bestReady!.remainingMinutes.toFixed(0)}' · Hold até settle`
       : blockers.length
         ? `Eventos raros · ${blockers.slice(0, 2).join(" · ")}`
         : best?.alreadyImpossible
-          ? `Watch impossível ${best.label} lay ${best.layOdds.toFixed(0)}`
+          ? `LUCRO CERTO · watch ${best.label} lay ${best.layOdds.toFixed(0)}`
           : best?.stillPossible
             ? `Watch ${best.label} lay ${best.layOdds.toFixed(0)} · +${best.goalsNeeded} gols`
             : "Sem candidato CS raro";

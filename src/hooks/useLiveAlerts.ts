@@ -528,13 +528,15 @@ export function useLiveAlerts(
         const immediate = Boolean(entry.alreadyImpossible);
         pushAlert({
           kind: "enter",
-          title: `ENTRAR · EVENTOS RAROS · ${score} · ${name}`,
+          title: immediate
+            ? `LUCRO CERTO · ${score} · ${name}`
+            : `ENTRAR · EVENTOS RAROS · ${score} · ${name}`,
           body: label
             ? `${label}${minute} · lay ${score} x${entryOdds > 1 ? entryOdds : "?"}${
-                immediate ? " · IMEDIATO (já impossível)" : " · hold"
+                immediate ? " · LUCRO CERTO (já impossível)" : " · hold"
               }${multiHint}`
             : `Lay ${score}${minute}${entryOdds > 1 ? ` · x${entryOdds}` : ""}${
-                immediate ? " · IMEDIATO" : " · hold"
+                immediate ? " · LUCRO CERTO" : " · hold"
               }${multiHint}`,
           tag: `tips3x3-enter-er-${id}-${score}-${Date.now()}`,
         });
@@ -634,12 +636,15 @@ export function useLiveAlerts(
           const name = matchName(favorites, row);
           const label = row.live?.scoreLabel;
           const entryOdds = Number(entry.layOdds ?? 0);
+          const immediate = Boolean(entry.alreadyImpossible);
           pushAlert({
             kind: "enter",
-            title: `ENTRAR · EVENTOS RAROS · ${score} · ${name}`,
+            title: immediate
+              ? `LUCRO CERTO · ${score} · ${name}`
+              : `ENTRAR · EVENTOS RAROS · ${score} · ${name}`,
             body: label
-              ? `${label} · lay ${score} · hold`
-              : `Lay ${score} · hold`,
+              ? `${label} · lay ${score}${immediate ? " · LUCRO CERTO" : " · hold"}`
+              : `Lay ${score}${immediate ? " · LUCRO CERTO" : " · hold"}`,
             tag: `tips3x3-enter-er-${id}-${score}-vis`,
           });
           sendToExtension(row, {
