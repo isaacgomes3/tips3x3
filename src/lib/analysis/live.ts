@@ -40,26 +40,34 @@ function toInt(v: string | undefined, fallback = 0) {
 }
 
 export function toLiveSnapshot(event: InplayEvent): LiveSnapshot {
-  const homeScore = toInt(event.score?.home?.score);
-  const awayScore = toInt(event.score?.away?.score);
+  const rawHome = event.score?.home?.score;
+  const rawAway = event.score?.away?.score;
+  const hasScore =
+    rawHome != null &&
+    rawHome !== "" &&
+    rawAway != null &&
+    rawAway !== "";
+  const homeScore = hasScore ? toInt(rawHome) : 0;
+  const awayScore = hasScore ? toInt(rawAway) : 0;
   const minuteRaw = event.elapsedRegularTime ?? event.timeElapsed;
   const minute = minuteRaw != null && minuteRaw !== "" ? toInt(minuteRaw, NaN) : null;
 
   const stillPossible33 =
-    homeScore <= 3 &&
-    awayScore <= 3 &&
-    !(homeScore === 3 && awayScore === 3);
+    !hasScore ||
+    (homeScore <= 3 &&
+      awayScore <= 3 &&
+      !(homeScore === 3 && awayScore === 3));
 
   return {
     eventId: event.eventId,
     homeScore,
     awayScore,
-    scoreLabel: `${homeScore}-${awayScore}`,
+    scoreLabel: hasScore ? `${homeScore}-${awayScore}` : "",
     minute: Number.isFinite(minute as number) ? (minute as number) : null,
     status: event.status ?? "UNKNOWN",
     matchStatus: event.inPlayMatchStatus,
-    totalGoals: homeScore + awayScore,
-    goalDiff: Math.abs(homeScore - awayScore),
+    totalGoals: hasScore ? homeScore + awayScore : 0,
+    goalDiff: hasScore ? Math.abs(homeScore - awayScore) : 0,
     stillPossible33,
   };
 }

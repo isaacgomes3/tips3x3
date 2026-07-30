@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tips3x3 Odds</title>
+    <style>
+      body {
+        width: 300px;
+        margin: 0;
+        padding: 0.85rem;
+        font-family: system-ui, sans-serif;
+        background: #0f141c;
+        color: #e8eef8;
+      }
+      h1 {
+        font-size: 0.95rem;
+        margin: 0 0 0.55rem;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+        font-size: 0.78rem;
+        margin: 0.3rem 0;
+        color: #9aa6b8;
+      }
+      .row strong {
+        color: #e8eef8;
+        text-align: right;
+      }
+      .ok {
+        color: #7dff9a !important;
+      }
+      .bad {
+        color: #ff7a7a !important;
+      }
+      .btns {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-top: 0.65rem;
+      }
+      button,
+      a.btn {
+        display: inline-block;
+        padding: 0.4rem 0.7rem;
+        border-radius: 8px;
+        border: 0;
+        background: #1c2b45;
+        color: #fff;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      button.primary {
+        background: #2ecc71;
+        color: #04120a;
+      }
+      #msg {
+        margin-top: 0.55rem;
+        font-size: 0.72rem;
+        line-height: 1.35;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #9aa6b8;
+      }
+      #msg.is-ok {
+        color: #7dff9a;
+      }
+      #msg.is-err {
+        color: #ff7a7a;
+      }
+      .hint {
+        margin-top: 0.45rem;
+        font-size: 0.68rem;
+        color: #6b778a;
+        line-height: 1.35;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Tips3x3 Odds</h1>
+    <div class="row"><span>Status</span><strong id="enabled">…</strong></div>
+    <div class="row"><span>Sessão</span><strong id="session">…</strong></div>
+    <div class="row"><span>API</span><strong id="api">…</strong></div>
+    <div class="row"><span>Último envio</span><strong id="last">—</strong></div>
+    <div class="row"><span>No servidor</span><strong id="server">—</strong></div>
+    <div id="msg"></div>
+    <p class="hint">
+      1) tips3x3.com/app aberto<br />
+      2) Bet365: Futebol → liga/próximos (não só home)<br />
+      3) Betnacional futebol + <strong>Capturar abas</strong>
+    </p>
+    <div class="btns">
+      <button id="capture" class="primary" type="button">Capturar abas</button>
+      <button id="test" type="button">Testar API</button>
+      <button id="refresh" type="button">Atualizar</button>
+      <a class="btn" href="options.html" target="_blank">Opções</a>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

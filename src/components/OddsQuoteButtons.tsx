@@ -32,15 +32,18 @@ export function OddsQuoteButtons({
   size?: "sm" | "md";
 }) {
   const inner = (
-    <div className={`quote-pair quote-${size}`}>
-      <span className="quote-btn quote-back" title="Back">
-        <strong>{formatOdd(backOdds)}</strong>
-        <em>{formatLiq(backAmount)}</em>
-      </span>
-      <span className="quote-btn quote-lay" title="Lay">
-        <strong>{formatOdd(layOdds)}</strong>
-        <em>{formatLiq(layAmount)}</em>
-      </span>
+    <div className="quote-market">
+      <span className="quote-market-label">{label}</span>
+      <div className={`quote-pair quote-${size}`}>
+        <span className="quote-btn quote-back" title={`Back · ${label}`}>
+          <strong>{formatOdd(backOdds)}</strong>
+          <em>{formatLiq(backAmount)}</em>
+        </span>
+        <span className="quote-btn quote-lay" title={`Lay · ${label}`}>
+          <strong>{formatOdd(layOdds)}</strong>
+          <em>{formatLiq(layAmount)}</em>
+        </span>
+      </div>
     </div>
   );
 

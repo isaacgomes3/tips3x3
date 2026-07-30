@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
+import { buildEventosRarosSnapshot } from "@/lib/analysis/eventos-raros";
 import { confirmLivePattern, toLiveSnapshot } from "@/lib/analysis/live";
-import { extractLay3x3, extractOverMarket } from "@/lib/analysis/markets";
-import { buildOverLimiteSnapshot } from "@/lib/analysis/over-limite";
+import {
+  extractLay3x3,
+  extractQovMarket,
+  listHighLayCorrectScores,
+} from "@/lib/analysis/markets";
 import { analyzePreLive } from "@/lib/analysis/prelive";
+import { buildQovSnapshot } from "@/lib/analysis/qov";
 import { buildTradePlan } from "@/lib/analysis/trade-plan";
 import {
   getEventWithScoreBook,
@@ -71,8 +76,8 @@ export async function GET(request: Request) {
             }
 
             let tradePlan = analysis.tradePlan;
-            let overLimite = analysis.overLimite;
-            const overMkt = extractOverMarket(event, 2.5);
+            let qovLayUnderdog = analysis.qovLayUnderdog;
+            let eventosRaros = analysis.eventosRaros;
             const teamFormPromise = analyzeTeamForm({
               home: analysis.home,
               away: analysis.away,
@@ -108,42 +113,56 @@ export async function GET(request: Request) {
                 (analysis.matchOdds.away.back ?? 99)
                   ? "home"
                   : "away";
-              let overHistory: Awaited<ReturnType<typeof getOddsHistory>> | null =
-                null;
-              if (overMkt.runnerId) {
-                overHistory = await getOddsHistory({
-                  runnerId: overMkt.runnerId,
-                  marketId: overMkt.marketId,
-                  minutesBefore: 30,
-                  limit: 120,
-                }).catch(() => null);
-              }
-              const favoritePressureBias =
-                overMkt.layOdds != null
-                  ? await getFavoritePressure({
-                      home: analysis.home,
-                      away: analysis.away,
-                      start: analysis.start,
-                      favoriteSide,
-                    })
-                  : null;
-              overLimite = buildOverLimiteSnapshot({
-                layOdds: overMkt.layOdds,
-                backOdds: overMkt.backOdds,
-                layLiquidity: overMkt.liquidity,
-                marketId: overMkt.marketId,
-                runnerId: overMkt.runnerId,
-                historyPoints: overHistory?.data ?? [],
-                teamForm,
-                over25Back: analysis.over25,
-                matchOdds: analysis.matchOdds,
-                totalGoals: toLiveSnapshot(ip).totalGoals,
-                minute: toLiveSnapshot(ip).minute,
+              const liveSnap = toLiveSnapshot(ip);
+              const favoritePressureBias = await getFavoritePressure({
+                home: analysis.home,
+                away: analysis.away,
+                start: analysis.start,
                 favoriteSide,
+              });
+
+              const dogSide =
+                favoriteSide === "home" ? ("away" as const) : ("home" as const);
+              const qovDog = extractQovMarket(event, dogSide);
+
+              const hasLiveScore = Boolean(liveSnap.scoreLabel);
+              qovLayUnderdog = buildQovSnapshot({
+                mode: "lay-underdog",
+                layOdds: qovDog.layOdds,
+                backOdds: qovDog.backOdds,
+                liquidity: qovDog.layLiquidity,
+                marketId: qovDog.marketId,
+                runnerId: qovDog.runnerId,
+                matchOdds: analysis.matchOdds,
+                homeScore: hasLiveScore ? liveSnap.homeScore : null,
+                awayScore: hasLiveScore ? liveSnap.awayScore : null,
+                minute: liveSnap.minute,
+                over25Back: analysis.over25,
+                teamForm,
                 favoritePressureBias,
+                isLive: true,
+              });
+
+              const highLay = listHighLayCorrectScores(event, 100);
+              eventosRaros = buildEventosRarosSnapshot({
+                rawCandidates: highLay.candidates.map((c) => ({
+                  label: c.label,
+                  home: c.home,
+                  away: c.away,
+                  marketId: c.marketId,
+                  runnerId: c.runnerId,
+                  layOdds: c.layOdds,
+                  backOdds: c.backOdds,
+                  layLiquidity: c.layLiquidity,
+                })),
+                homeScore: hasLiveScore ? liveSnap.homeScore : null,
+                awayScore: hasLiveScore ? liveSnap.awayScore : null,
+                minute: liveSnap.minute,
+                teamForm,
+                isLive: true,
               });
             } catch {
-              // mantém overLimite base
+              // mantém qov / eventos raros base
             }
 
             const confirmation = confirmLivePattern(analysis, ip);
@@ -178,12 +197,30 @@ export async function GET(request: Request) {
               });
             }
 
-            if (overLimite.entryReady) {
+            if (qovLayUnderdog.entryReady) {
               alerts.unshift({
-                id: `${analysis.eventId}-over-entry`,
+                id: `${analysis.eventId}-qov-lay-entry`,
                 severity: "entry" as const,
-                title: "ENTRADA LAY · OVER 2.5",
-                message: `${analysis.eventName}: ${overLimite.summary}`,
+                title: "ENTRADA LAY · QOV ZEBRA",
+                message: `${analysis.eventName}: ${qovLayUnderdog.summary}`,
+                at: new Date().toISOString(),
+              });
+            }
+
+            if (eventosRaros.entryReady) {
+              const labels =
+                eventosRaros.scoreLabels?.length > 0
+                  ? eventosRaros.scoreLabels.join(", ")
+                  : eventosRaros.scoreLabel ?? "?";
+              const n = eventosRaros.entries?.length ?? 1;
+              alerts.unshift({
+                id: `${analysis.eventId}-eventos-raros-entry`,
+                severity: "entry" as const,
+                title:
+                  n > 1
+                    ? `ENTRADA LAY · EVENTOS RAROS (${n})`
+                    : "ENTRADA LAY · EVENTOS RAROS",
+                message: `${analysis.eventName}: ${labels} · ${eventosRaros.summary}`,
                 at: new Date().toISOString(),
               });
             }
@@ -194,13 +231,21 @@ export async function GET(request: Request) {
               alerts,
               confirmed: tradePlan.entryReady,
               mexchangeUrl: mexchangeEventUrl(event.id, analysis.marketId),
+              qovMexchangeUrl: qovLayUnderdog.marketId
+                ? mexchangeEventUrl(event.id, qovLayUnderdog.marketId)
+                : undefined,
+              eventosRarosMexchangeUrl: eventosRaros.marketId
+                ? mexchangeEventUrl(event.id, eventosRaros.marketId)
+                : undefined,
               tradePlan,
               analysis: {
                 ...analysis,
                 tradePlan,
-                overLimite,
+                qovLayUnderdog,
+                eventosRaros,
               },
-              overLimite,
+              qovLayUnderdog,
+              eventosRaros,
             };
           } catch {
             // Evento live sem mercado exchange acessível — ainda lista placar

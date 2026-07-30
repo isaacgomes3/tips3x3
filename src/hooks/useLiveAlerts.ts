@@ -9,10 +9,22 @@ import {
   type AlertSoundKind,
 } from "@/lib/alert-sound";
 import {
+  initNativeAlerts,
+  isNativeApp,
+  nativeNotify,
+} from "@/lib/native-alerts";
+import {
+  clearExtAutoEntryDispatched,
   dispatchExtAutoEntry,
+  dispatchExtMatchFinished,
+  dispatchExtScoreUpdate,
+  hasExtAutoEntryBeenDispatched,
   isExtAutoSendEnabled,
+  markExtAutoEntryDispatched,
+  qovSelectionLabel,
   setExtAutoSendEnabled,
 } from "@/lib/bolsa-bridge";
+import { isFinishedStatus } from "@/lib/live-status";
 
 export type LiveToast = {
   id: string;
@@ -20,6 +32,38 @@ export type LiveToast = {
   title: string;
   body: string;
   at: number;
+};
+
+type QovSnap = {
+  entryReady?: boolean;
+  settled?: boolean;
+  side?: "lay" | "back";
+  underdogSide?: "home" | "away" | null;
+  favoriteSide?: "home" | "away" | null;
+  entryOdds?: number | null;
+  layOdds?: number | null;
+  backOdds?: number | null;
+  marketId?: string;
+  runnerId?: string;
+  summary?: string;
+};
+
+type EventosRarosSnap = {
+  entryReady?: boolean;
+  settled?: boolean;
+  layOdds?: number | null;
+  scoreLabel?: string | null;
+  scoreLabels?: string[];
+  entries?: Array<{
+    label: string;
+    layOdds: number;
+    runnerId?: string;
+    marketId?: string;
+    entryReady?: boolean;
+  }>;
+  marketId?: string;
+  runnerId?: string;
+  summary?: string;
 };
 
 type LiveScoreRow = {
@@ -41,13 +85,12 @@ type LiveScoreRow = {
     entryReady?: boolean;
     layOdds?: number | null;
   };
-  overLimite?: {
-    entryReady?: boolean;
-    line?: number;
-    layOdds?: number | null;
-  };
+  qovLayUnderdog?: QovSnap;
+  eventosRaros?: EventosRarosSnap;
   confirmed?: boolean;
   mexchangeUrl?: string;
+  qovMexchangeUrl?: string;
+  eventosRarosMexchangeUrl?: string;
 };
 
 function parseGoals(scoreLabel?: string | null): number | null {
@@ -63,14 +106,6 @@ function matchName(favorites: FavoriteMatch[], row: LiveScoreRow): string {
   return (
     row.analysis.eventName ||
     `${row.analysis.home ?? "?"} vs ${row.analysis.away ?? "?"}`
-  );
-}
-
-function isFinishedStatus(status?: string | null) {
-  if (!status) return false;
-  return (
-    /^(FT|FINISHED|ENDED|COMPLETE|FullTime|FINAL)/i.test(status.trim()) ||
-    /final|encerrado|ended|finished|full.?time/i.test(status)
   );
 }
 
@@ -123,10 +158,12 @@ export function useLiveAlerts(
   const lastScoreRef = useRef<Map<string, string>>(new Map());
   const lastStatusRef = useRef<Map<string, string>>(new Map());
   const enterNotifiedRef = useRef<Set<string>>(new Set());
+  /** Memoriza a transição do sinal para evitar reenvio enquanto permanece pronto. */
+  const entryReadyPrevRef = useRef<Map<string, boolean>>(new Map());
   const seenLiveFavRef = useRef<Set<string>>(new Set());
   const primedRef = useRef(false);
   const ftNotifiedRef = useRef<Set<string>>(new Set());
-  const bootAtRef = useRef(Date.now());
+  const finishedSentRef = useRef<Set<string>>(new Set());
   const autoSentRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -142,28 +179,46 @@ export function useLiveAlerts(
     setToasts((list) => list.filter((t) => t.id !== id));
   }, []);
 
-  const sendToExtension = useCallback((row: LiveScoreRow) => {
-    if (!isExtAutoSendEnabled()) return;
-    const id = row.analysis.eventId;
-    if (!id || autoSentRef.current.has(id)) return;
-    const layOdds = Number(
-      row.tradePlan?.layOdds ?? row.analysis.layOdds ?? 0,
-    );
-    if (!(layOdds > 1.01)) return;
-    autoSentRef.current.add(id);
-    const ok = dispatchExtAutoEntry({
-      eventId: id,
-      eventName:
-        row.analysis.eventName ||
-        `${row.analysis.home ?? "?"} vs ${row.analysis.away ?? "?"}`,
-      score: "3-3",
-      layOdds,
-      marketId: row.analysis.marketId,
-      runnerId: row.analysis.runnerId,
-      mexchangeUrl: row.mexchangeUrl,
-    });
-    if (!ok) autoSentRef.current.delete(id);
-  }, []);
+  const sendToExtension = useCallback(
+    (
+      row: LiveScoreRow,
+      opts: {
+        score: string;
+        layOdds: number;
+        marketId?: string;
+        runnerId?: string;
+        mexchangeUrl?: string;
+        exitMode?: "hold" | "green";
+        dedupeKey: string;
+      },
+    ): boolean => {
+      if (!isExtAutoSendEnabled()) return false;
+      const id = row.analysis.eventId;
+      if (!id || !(opts.layOdds > 1.01)) return false;
+      if (autoSentRef.current.has(opts.dedupeKey)) return false;
+      autoSentRef.current.add(opts.dedupeKey);
+      const ok = dispatchExtAutoEntry({
+        eventId: id,
+        eventName:
+          row.analysis.eventName ||
+          `${row.analysis.home ?? "?"} vs ${row.analysis.away ?? "?"}`,
+        score: opts.score,
+        layOdds: opts.layOdds,
+        marketId: opts.marketId,
+        runnerId: opts.runnerId,
+        mexchangeUrl: opts.mexchangeUrl || row.mexchangeUrl,
+        exitMode: opts.exitMode,
+        dedupeKey: opts.dedupeKey,
+      });
+      if (ok) {
+        markExtAutoEntryDispatched(opts.dedupeKey);
+      } else {
+        autoSentRef.current.delete(opts.dedupeKey);
+      }
+      return ok;
+    },
+    [],
+  );
 
   const pushAlert = useCallback(
     (opts: {
@@ -185,10 +240,19 @@ export function useLiveAlerts(
       });
       void playAlertSound(opts.kind);
       if (opts.kind === "enter") vibrateEnter();
-      browserNotify({
+      void nativeNotify({
+        kind: opts.kind,
         title: opts.title,
         body: opts.body,
         tag: opts.tag,
+      }).then((sent) => {
+        if (!sent) {
+          browserNotify({
+            title: opts.title,
+            body: opts.body,
+            tag: opts.tag,
+          });
+        }
       });
       window.setTimeout(() => {
         setToasts((list) => list.filter((t) => t.id !== toast.id));
@@ -200,8 +264,11 @@ export function useLiveAlerts(
   const armAlerts = useCallback(async () => {
     await unlockAlertAudio();
     await ensureNotifyPermission();
+    // Pedir permissão só no gesto do usuário (evita freeze no boot do APK).
+    if (isNativeApp()) await initNativeAlerts({ requestPermission: true });
     setAlertsArmed(
       isAlertAudioUnlocked() ||
+        isNativeApp() ||
         (typeof Notification !== "undefined" &&
           Notification.permission === "granted"),
     );
@@ -222,6 +289,11 @@ export function useLiveAlerts(
     ) {
       setAlertsArmed(true);
     }
+    if (isNativeApp()) {
+      void initNativeAlerts({ requestPermission: false }).then((ok) => {
+        if (ok) setAlertsArmed(true);
+      });
+    }
     return () => {
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("touchstart", unlock);
@@ -236,9 +308,24 @@ export function useLiveAlerts(
     const rows = liveRows ?? [];
     const liveIds = new Set(rows.map((r) => r.analysis.eventId));
     const primed = primedRef.current;
-    // Após ~1.2s do boot, já alerta ENTRAR mesmo se já estava pronto no 1º poll
-    const warm =
-      primed || Date.now() - bootAtRef.current > 1200 || rows.length > 0;
+
+    const shouldFireEnter = (key: string, ready: boolean): boolean => {
+      const prev = entryReadyPrevRef.current.get(key);
+      entryReadyPrevRef.current.set(key, ready);
+      if (!ready) {
+        enterNotifiedRef.current.delete(key);
+        autoSentRef.current.delete(key);
+        clearExtAutoEntryDispatched(key);
+        return false;
+      }
+      // Uma entrada que já estava pronta ao abrir o painel também precisa ser
+      // entregue. A marca da sessão evita reenviá-la a cada recarga.
+      if (hasExtAutoEntryBeenDispatched(key)) return false;
+      // Se a extensão estava desligada quando o sinal apareceu, reavalia na
+      // próxima atualização após ela ser ativada.
+      if (prev === true && !isExtAutoSendEnabled()) return false;
+      return true;
+    };
 
     if (primed) {
       for (const id of seenLiveFavRef.current) {
@@ -264,6 +351,17 @@ export function useLiveAlerts(
       const label = row.live?.scoreLabel;
       const status = row.live?.status ?? "";
       const isFav = favIds.has(id);
+      const entryKeys = [
+        `${id}:lay-3x3`,
+        `${id}:qov-lay-zebra`,
+        `${id}:eventos-raros`,
+      ];
+      // Multi-placar: limpa também chaves por score
+      for (const key of [...enterNotifiedRef.current]) {
+        if (key.startsWith(`${id}:eventos-raros`)) {
+          entryKeys.push(key);
+        }
+      }
 
       if (isFav && label) {
         seenLiveFavRef.current.add(id);
@@ -272,6 +370,13 @@ export function useLiveAlerts(
       if (isFav && label) {
         const prev = lastScoreRef.current.get(id);
         lastScoreRef.current.set(id, label);
+        if (primed && prev !== label) {
+          dispatchExtScoreUpdate({
+            eventId: id,
+            score: label,
+            eventName: name,
+          });
+        }
         if (primed && prev && prev !== label) {
           const prevGoals = parseGoals(prev);
           const nextGoals = parseGoals(label);
@@ -313,84 +418,176 @@ export function useLiveAlerts(
         }
       }
 
+      if (isFinishedStatus(status)) {
+        for (const key of entryKeys) {
+          entryReadyPrevRef.current.set(key, false);
+          enterNotifiedRef.current.delete(key);
+          autoSentRef.current.delete(key);
+          clearExtAutoEntryDispatched(key);
+        }
+        if (!finishedSentRef.current.has(id)) {
+          finishedSentRef.current.add(id);
+          dispatchExtMatchFinished({ eventId: id, score: label, status });
+        }
+        continue;
+      }
+
       // ENTRAR Lay 3-3 — apenas pelo gate estrito do plano.
       const layEntryKey = `${id}:lay-3x3`;
       const layReady = Boolean(row.tradePlan?.entryReady);
-      if (layReady) {
-        if (warm && !enterNotifiedRef.current.has(layEntryKey)) {
-          enterNotifiedRef.current.add(layEntryKey);
-          const minute =
-            row.live?.minute != null
-              ? ` @ ${Math.floor(row.live.minute)}′`
-              : "";
-          const layOdds = Number(
-            row.tradePlan?.layOdds ?? row.analysis.layOdds ?? 0,
-          );
-          pushAlert({
-            kind: "enter",
-            title: `ENTRAR · ${name}`,
-            body: label
-              ? `Indicação de entrada · ${label}${minute}${layOdds > 1 ? ` · lay x${layOdds}` : ""}`
-              : `Indicação de entrada${minute}${layOdds > 1 ? ` · lay x${layOdds}` : ""}`,
-            tag: `tips3x3-enter-${id}-${Date.now()}`,
-          });
-          sendToExtension(row);
-        }
-      } else {
-        enterNotifiedRef.current.delete(layEntryKey);
-        autoSentRef.current.delete(id);
+      if (shouldFireEnter(layEntryKey, layReady)) {
+        enterNotifiedRef.current.add(layEntryKey);
+        const minute =
+          row.live?.minute != null
+            ? ` @ ${Math.floor(row.live.minute)}′`
+            : "";
+        const layOdds = Number(
+          row.tradePlan?.layOdds ?? row.analysis.layOdds ?? 0,
+        );
+        pushAlert({
+          kind: "enter",
+          title: `ENTRAR · ${name}`,
+          body: label
+            ? `Indicação de entrada · ${label}${minute}${layOdds > 1 ? ` · lay x${layOdds}` : ""}`
+            : `Indicação de entrada${minute}${layOdds > 1 ? ` · lay x${layOdds}` : ""}`,
+          tag: `tips3x3-enter-${id}-${Date.now()}`,
+        });
+        sendToExtension(row, {
+          score: "3-3",
+          layOdds,
+          marketId: row.analysis.marketId,
+          runnerId: row.analysis.runnerId,
+          mexchangeUrl: row.mexchangeUrl,
+          dedupeKey: layEntryKey,
+        });
       }
 
-      // ENTRAR Lay Over 2.5 — gate próprio: correção, ticks, liquidez,
-      // gap, faixa de odd e momento sem pressão desfavorável.
-      const overEntryKey = `${id}:over-2-5`;
-      const totalGoals = parseGoals(label);
-      const overReady = Boolean(
-        row.overLimite?.entryReady &&
-          (totalGoals == null || totalGoals <= 2),
+      // ENTRAR Lay QOV zebra (auto-extensão).
+      const qovLayKey = `${id}:qov-lay-zebra`;
+      const qovLay = row.qovLayUnderdog;
+      const qovLayReady = Boolean(qovLay?.entryReady && !qovLay?.settled);
+      if (shouldFireEnter(qovLayKey, qovLayReady)) {
+        enterNotifiedRef.current.add(qovLayKey);
+        const minute =
+          row.live?.minute != null
+            ? ` @ ${Math.floor(row.live.minute)}′`
+            : "";
+        const entryOdds = Number(qovLay?.entryOdds ?? qovLay?.layOdds ?? 0);
+        const dogSide = qovLay?.underdogSide === "away" ? "away" : "home";
+        pushAlert({
+          kind: "enter",
+          title: `ENTRAR · LAY QOV ZEBRA · ${name}`,
+          body: label
+            ? `${label}${minute}${entryOdds > 1 ? ` · lay x${entryOdds}` : ""}`
+            : `Indicação Lay QOV${minute}${entryOdds > 1 ? ` · lay x${entryOdds}` : ""}`,
+          tag: `tips3x3-enter-qov-lay-${id}-${Date.now()}`,
+        });
+        sendToExtension(row, {
+          score: qovSelectionLabel(dogSide),
+          layOdds: entryOdds,
+          marketId: qovLay?.marketId,
+          runnerId: qovLay?.runnerId,
+          mexchangeUrl: row.qovMexchangeUrl ?? row.mexchangeUrl,
+          dedupeKey: qovLayKey,
+        });
+      }
+
+      // ENTRAR Eventos raros — auto-entry por placar (multi-lay CS / mesmo saldo).
+      const er = row.eventosRaros;
+      const erEntries =
+        er?.entries?.filter((e) => e.entryReady !== false) ??
+        (er?.entryReady && er.scoreLabel
+          ? [
+              {
+                label: er.scoreLabel,
+                layOdds: Number(er.layOdds ?? 0),
+                runnerId: er.runnerId,
+                marketId: er.marketId,
+              },
+            ]
+          : []);
+      const erLabelsSeen = new Set<string>();
+      for (const entry of erEntries) {
+        const score = entry.label;
+        if (!score || erLabelsSeen.has(score)) continue;
+        erLabelsSeen.add(score);
+        const erKey = `${id}:eventos-raros:${score}`;
+        const erReady = Boolean(er?.entryReady && !er?.settled);
+        if (!shouldFireEnter(erKey, erReady)) continue;
+        enterNotifiedRef.current.add(erKey);
+        const minute =
+          row.live?.minute != null
+            ? ` @ ${Math.floor(row.live.minute)}′`
+            : "";
+        const entryOdds = Number(entry.layOdds ?? 0);
+        const multiHint =
+          erEntries.length > 1
+            ? ` · ${erEntries.length} placares no evento`
+            : "";
+        pushAlert({
+          kind: "enter",
+          title: `ENTRAR · EVENTOS RAROS · ${score} · ${name}`,
+          body: label
+            ? `${label}${minute} · lay ${score} x${entryOdds > 1 ? entryOdds : "?"} · hold${multiHint}`
+            : `Lay ${score}${minute}${entryOdds > 1 ? ` · x${entryOdds}` : ""} · hold${multiHint}`,
+          tag: `tips3x3-enter-er-${id}-${score}-${Date.now()}`,
+        });
+        sendToExtension(row, {
+          score,
+          layOdds: entryOdds,
+          marketId: entry.marketId ?? er?.marketId,
+          runnerId: entry.runnerId,
+          mexchangeUrl: row.eventosRarosMexchangeUrl ?? row.mexchangeUrl,
+          exitMode: "hold",
+          dedupeKey: erKey,
+        });
+      }
+      // Limpa chaves de placares que saíram do setup
+      const activeErKeys = new Set(
+        erEntries.map((e) => `${id}:eventos-raros:${e.label}`),
       );
-      if (overReady) {
-        if (warm && !enterNotifiedRef.current.has(overEntryKey)) {
-          enterNotifiedRef.current.add(overEntryKey);
-          const minute =
-            row.live?.minute != null
-              ? ` @ ${Math.floor(row.live.minute)}′`
-              : "";
-          const overLine = row.overLimite?.line ?? 2.5;
-          const layOdds = Number(row.overLimite?.layOdds ?? 0);
-          pushAlert({
-            kind: "enter",
-            title: `ENTRAR · LAY OVER ${overLine} · ${name}`,
-            body: label
-              ? `Indicação de entrada · ${label}${minute}${layOdds > 1 ? ` · lay x${layOdds}` : ""}`
-              : `Indicação de entrada${minute}${layOdds > 1 ? ` · lay x${layOdds}` : ""}`,
-            tag: `tips3x3-enter-over-${id}-${Date.now()}`,
-          });
+      for (const key of [...enterNotifiedRef.current]) {
+        if (
+          key.startsWith(`${id}:eventos-raros:`) &&
+          !activeErKeys.has(key)
+        ) {
+          enterNotifiedRef.current.delete(key);
+          entryReadyPrevRef.current.set(key, false);
+          autoSentRef.current.delete(key);
+          clearExtAutoEntryDispatched(key);
         }
-      } else {
-        enterNotifiedRef.current.delete(overEntryKey);
       }
     }
 
     primedRef.current = true;
-  }, [favorites, liveRows, pushAlert, sendToExtension]);
+  }, [extAutoSend, favorites, liveRows, pushAlert, sendToExtension]);
 
-  // Revalida quando o celular volta à tela
+  // Revalida quando o celular volta à tela — só flanco novo (não reenvia sinal antigo)
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState !== "visible") return;
       void unlockAlertAudio();
+      if (!primedRef.current) return;
       const rows = liveRows ?? [];
       for (const row of rows) {
         const id = row.analysis.eventId;
+        if (isFinishedStatus(row.live?.status)) continue;
         const layEntryKey = `${id}:lay-3x3`;
+        const layReady = Boolean(row.tradePlan?.entryReady);
+        const layPrev = entryReadyPrevRef.current.get(layEntryKey);
+        entryReadyPrevRef.current.set(layEntryKey, layReady);
         if (
-          row.tradePlan?.entryReady &&
-          !enterNotifiedRef.current.has(layEntryKey)
+          layReady &&
+          layPrev !== true &&
+          !enterNotifiedRef.current.has(layEntryKey) &&
+          !hasExtAutoEntryBeenDispatched(layEntryKey)
         ) {
           enterNotifiedRef.current.add(layEntryKey);
           const name = matchName(favorites, row);
           const label = row.live?.scoreLabel;
+          const layOdds = Number(
+            row.tradePlan?.layOdds ?? row.analysis.layOdds ?? 0,
+          );
           pushAlert({
             kind: "enter",
             title: `ENTRAR · ${name}`,
@@ -399,27 +596,54 @@ export function useLiveAlerts(
               : "Indicação de entrada",
             tag: `tips3x3-enter-${id}-vis`,
           });
-          sendToExtension(row);
+          sendToExtension(row, {
+            score: "3-3",
+            layOdds,
+            marketId: row.analysis.marketId,
+            runnerId: row.analysis.runnerId,
+            mexchangeUrl: row.mexchangeUrl,
+            dedupeKey: layEntryKey,
+          });
         }
 
-        const overEntryKey = `${id}:over-2-5`;
-        const totalGoals = parseGoals(row.live?.scoreLabel);
-        if (
-          row.overLimite?.entryReady &&
-          (totalGoals == null || totalGoals <= 2) &&
-          !enterNotifiedRef.current.has(overEntryKey)
-        ) {
-          enterNotifiedRef.current.add(overEntryKey);
+        const er = row.eventosRaros;
+        const erEntries =
+          er?.entries?.filter((e) => e.entryReady !== false) ?? [];
+        for (const entry of erEntries) {
+          const score = entry.label;
+          if (!score) continue;
+          const erKey = `${id}:eventos-raros:${score}`;
+          const erReady = Boolean(er?.entryReady && !er?.settled);
+          const erPrev = entryReadyPrevRef.current.get(erKey);
+          entryReadyPrevRef.current.set(erKey, erReady);
+          if (
+            !erReady ||
+            erPrev === true ||
+            enterNotifiedRef.current.has(erKey) ||
+            hasExtAutoEntryBeenDispatched(erKey)
+          ) {
+            continue;
+          }
+          enterNotifiedRef.current.add(erKey);
           const name = matchName(favorites, row);
           const label = row.live?.scoreLabel;
-          const overLine = row.overLimite.line ?? 2.5;
+          const entryOdds = Number(entry.layOdds ?? 0);
           pushAlert({
             kind: "enter",
-            title: `ENTRAR · LAY OVER ${overLine} · ${name}`,
+            title: `ENTRAR · EVENTOS RAROS · ${score} · ${name}`,
             body: label
-              ? `Indicação de entrada · ${label}`
-              : "Indicação de entrada",
-            tag: `tips3x3-enter-over-${id}-vis`,
+              ? `${label} · lay ${score} · hold`
+              : `Lay ${score} · hold`,
+            tag: `tips3x3-enter-er-${id}-${score}-vis`,
+          });
+          sendToExtension(row, {
+            score,
+            layOdds: entryOdds,
+            marketId: entry.marketId ?? er?.marketId,
+            runnerId: entry.runnerId,
+            mexchangeUrl: row.eventosRarosMexchangeUrl ?? row.mexchangeUrl,
+            exitMode: "hold",
+            dedupeKey: erKey,
           });
         }
       }

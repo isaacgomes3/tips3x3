@@ -19,6 +19,23 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, 
 
 type Bankroll = ReturnType<typeof useBankrollData>;
 
+type QovSnap = {
+  entryReady?: boolean;
+  entryOdds?: number | null;
+  layOdds?: number | null;
+  backOdds?: number | null;
+};
+
+type EventosRarosSnap = {
+  entryReady?: boolean;
+  entryOdds?: number | null;
+  layOdds?: number | null;
+  backOdds?: number | null;
+  scoreLabel?: string | null;
+  scoreLabels?: string[];
+  entries?: Array<{ label: string; layOdds: number }>;
+};
+
 type LiveRow = {
   confirmed: boolean;
   mexchangeUrl: string;
@@ -27,7 +44,8 @@ type LiveRow = {
     targetBackOdds: number | null;
     example?: { profit: number | null; layStake: number } | null;
   };
-  overLimite?: { layOdds: number | null; backOdds: number | null };
+  qovLayUnderdog?: QovSnap;
+  eventosRaros?: EventosRarosSnap;
   live: null | {
     scoreLabel: string;
     minute: number | null;
@@ -44,13 +62,15 @@ type LiveRow = {
       lay: { odds: number | null };
     };
     tradePlan?: LiveRow["tradePlan"];
-    overLimite?: LiveRow["overLimite"];
+    qovLayUnderdog?: QovSnap;
+    eventosRaros?: EventosRarosSnap;
   };
 };
 
 type SignalStats = {
   lay3x3: { filters: number; entries: number; waiting: number; operating: boolean };
-  overLimite: { events: number; entries: number; monitoring: boolean };
+  qovLay: { events: number; entries: number; monitoring: boolean };
+  eventosRaros: { events: number; entries: number; monitoring: boolean };
 };
 
 function fmtBrl(n: number, signed = false) {
@@ -62,6 +82,32 @@ function fmtBrl(n: number, signed = false) {
   if (n > 0) return `+R$ ${abs}`;
   if (n < 0) return `-R$ ${abs}`;
   return `R$ ${abs}`;
+}
+
+function resolveLiveMarket(row: LiveRow, lay: number | null | undefined): string {
+  const er = row.eventosRaros ?? row.analysis.eventosRaros;
+  if (
+    er?.entryReady ||
+    (lay != null &&
+      er?.layOdds != null &&
+      Math.abs(lay - er.layOdds) < 0.01)
+  ) {
+    const n = er?.entries?.length ?? er?.scoreLabels?.length ?? 0;
+    if (n > 1) return `Eventos raros · ${n} placares`;
+    return er?.scoreLabel
+      ? `Eventos raros · ${er.scoreLabel}`
+      : "Eventos raros";
+  }
+  const qovLay = row.qovLayUnderdog ?? row.analysis.qovLayUnderdog;
+  if (
+    qovLay?.entryReady ||
+    (lay != null &&
+      qovLay?.entryOdds != null &&
+      Math.abs(lay - qovLay.entryOdds) < 0.01)
+  ) {
+    return "Lay QOV zebra";
+  }
+  return "Lay 3x3";
 }
 
 function fmtPct(n: number, signed = false) {
@@ -416,7 +462,7 @@ export function TradingTerminal({
         </article>
       </section>
 
-      {/* Main grid */}
+      {/* Painéis fixos — gestão, evolução e indicadores */}
       <section className="term-main-grid">
         <div className="term-col-left">
           <article className="term-panel term-bankroll-panel">
@@ -485,90 +531,151 @@ export function TradingTerminal({
               </dl>
             </article>
             <article className="term-panel term-signal-card">
-              <h4>LAY OVER 2.5</h4>
+              <h4>LAY QOV ZEBRA</h4>
               <div className="term-signal-status">
                 <span className="term-dot is-watch" />
-                {signalStats.overLimite.monitoring ? "Monitorando" : "Standby"}
+                {signalStats.qovLay.monitoring ? "Monitorando" : "Standby"}
               </div>
               <dl className="term-signal-stats">
-                <div><dt>Eventos</dt><dd>{signalStats.overLimite.events}</dd></div>
-                <div><dt>Entradas</dt><dd>{signalStats.overLimite.entries}</dd></div>
+                <div><dt>Eventos</dt><dd>{signalStats.qovLay.events}</dd></div>
+                <div><dt>Entradas</dt><dd>{signalStats.qovLay.entries}</dd></div>
+              </dl>
+            </article>
+            <article className="term-panel term-signal-card">
+              <h4>EVENTOS RAROS</h4>
+              <div className="term-signal-status">
+                <span className="term-dot is-watch" />
+                {signalStats.eventosRaros.monitoring ? "Monitorando" : "Standby"}
+              </div>
+              <dl className="term-signal-stats">
+                <div><dt>Eventos</dt><dd>{signalStats.eventosRaros.events}</dd></div>
+                <div><dt>Entradas</dt><dd>{signalStats.eventosRaros.entries}</dd></div>
               </dl>
             </article>
           </div>
         </div>
 
-        <div className="term-col-right">
-          <article className="term-panel term-live-panel">
-            <header className="term-panel-head">
-              <h3>Eventos em Tempo Real</h3>
-              <span className="term-live-count">{inplay.length} ao vivo</span>
-            </header>
-            <div className="term-table-scroll">
-              <table className="term-table">
-                <thead>
-                  <tr>
-                    <th>Liga</th>
-                    <th>Jogo</th>
-                    <th>Tempo</th>
-                    <th>Lay</th>
-                    <th>Back</th>
-                    <th>Lucro</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inplay.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="term-empty-cell">
-                        Nenhum evento ao vivo monitorado
-                      </td>
-                    </tr>
-                  )}
-                  {inplay.map((row) => {
-                    const plan = row.tradePlan ?? row.analysis.tradePlan;
-                    const lay = plan?.layOdds ?? row.analysis.quotes?.lay.odds;
-                    const back = plan?.targetBackOdds ?? row.analysis.quotes?.back.odds;
-                    const profit = plan?.example?.profit;
-                    const [home, away] = row.analysis.home && row.analysis.away
-                      ? [row.analysis.home, row.analysis.away]
-                      : row.analysis.eventName.split(/\s+vs\s+/i);
-                    const open = row.confirmed || row.live?.status !== "CLOSED";
-                    return (
-                      <tr
-                        key={row.analysis.eventId}
-                        className="term-table-row-click"
-                        onClick={() => onOpenEvent?.(row.analysis.eventId)}
-                      >
-                        <td>{row.analysis.competition ?? "—"}</td>
-                        <td>
-                          <span className="term-match">
-                            {home} <em>x</em> {away}
-                          </span>
-                        </td>
-                        <td>{row.live?.minute != null ? `${row.live.minute}′` : "—"}</td>
-                        <td>{lay?.toFixed(2) ?? "—"}</td>
-                        <td>{back?.toFixed(2) ?? "—"}</td>
-                        <td className={profit != null && profit >= 0 ? "is-up" : profit != null ? "is-down" : ""}>
-                          {profit != null ? fmtBrl(profit, true) : "—"}
-                        </td>
-                        <td>
-                          <span className={`term-status ${open ? "is-open" : "is-closed"}`}>
-                            {open ? "● Aberto" : "✔ Fechado"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+        <aside className="term-col-right term-insights-stack">
+          <article className="term-panel">
+            <Gauge value={todayRoiPct} max={dailyMetaPct} label="META" />
           </article>
-        </div>
+
+          <article className="term-panel term-mini-stats">
+            <div><span>Maior Green</span><strong className="is-up">{fmtBrl(stats.maxGreen, true)}</strong></div>
+            <div><span>Maior Red</span><strong className="is-down">{fmtBrl(stats.maxRed, true)}</strong></div>
+            <div><span>Sequência</span><strong>{stats.streak} Greens</strong></div>
+            <div><span>Operações</span><strong>{stats.operations}</strong></div>
+            <div><span>Dias positivos</span><strong>{stats.positiveDayPct.toFixed(0)}%</strong></div>
+          </article>
+
+          <article className="term-panel term-timeline-panel">
+            <header className="term-panel-head">
+              <h3>Linha do tempo</h3>
+            </header>
+            <ol className="term-timeline">
+              {timeline.length === 0 && (
+                <li className="term-timeline-empty">Sem operações recentes</li>
+              )}
+              {timeline.map((item, i) => (
+                <li key={i} className={item.done ? "is-done" : "is-pending"}>
+                  <time>{item.time}</time>
+                  <div>
+                    <strong>
+                      {item.done ? "✔" : "○"}{" "}
+                      {item.kind === "entrada" ? "Entrada Lay" : item.kind === "hedge" ? item.label : item.label}
+                    </strong>
+                    {item.kind === "entrada" && <p>{item.label}</p>}
+                    {item.profit != null && (
+                      <p className={item.profit >= 0 ? "is-up" : "is-down"}>
+                        {fmtBrl(item.profit, true)}
+                      </p>
+                    )}
+                  </div>
+                  {i < timeline.length - 1 && <span className="term-timeline-arrow">↓</span>}
+                </li>
+              ))}
+            </ol>
+          </article>
+        </aside>
       </section>
 
-      {/* Bottom row */}
-      <section className="term-bottom-grid">
+      {/* Tabelas dinâmicas — crescem conforme eventos/operações */}
+      <section className="term-dynamic-stack">
+        <article className="term-panel term-live-panel">
+          <header className="term-panel-head">
+            <h3>Eventos em Tempo Real</h3>
+            <span className="term-live-count">{inplay.length} ao vivo</span>
+          </header>
+          <div className="term-table-scroll">
+            <table className="term-table">
+              <thead>
+                <tr>
+                  <th>Liga</th>
+                  <th>Jogo</th>
+                  <th>Mercado</th>
+                  <th>Tempo</th>
+                  <th>Lay</th>
+                  <th>Back</th>
+                  <th>Lucro</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inplay.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="term-empty-cell">
+                      Nenhum evento ao vivo monitorado
+                    </td>
+                  </tr>
+                )}
+                {inplay.map((row) => {
+                  const plan = row.tradePlan ?? row.analysis.tradePlan;
+                  const lay = plan?.layOdds ?? row.analysis.quotes?.lay.odds;
+                  const back = plan?.targetBackOdds ?? row.analysis.quotes?.back.odds;
+                  const profit = plan?.example?.profit;
+                  const [home, away] = row.analysis.home && row.analysis.away
+                    ? [row.analysis.home, row.analysis.away]
+                    : row.analysis.eventName.split(/\s+vs\s+/i);
+                  const open = row.confirmed || row.live?.status !== "CLOSED";
+                  const market = resolveLiveMarket(row, lay);
+                  const marketClass =
+                    market.startsWith("Lay QOV") || market.startsWith("Lay Over")
+                    ? "term-market is-over"
+                    : "term-market";
+                  return (
+                    <tr
+                      key={row.analysis.eventId}
+                      className="term-table-row-click"
+                      onClick={() => onOpenEvent?.(row.analysis.eventId)}
+                    >
+                      <td>{row.analysis.competition ?? "—"}</td>
+                      <td>
+                        <span className="term-match">
+                          {home} <em>x</em> {away}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={marketClass}>{market}</span>
+                      </td>
+                      <td>{row.live?.minute != null ? `${row.live.minute}′` : "—"}</td>
+                      <td>{lay?.toFixed(2) ?? "—"}</td>
+                      <td>{back?.toFixed(2) ?? "—"}</td>
+                      <td className={profit != null && profit >= 0 ? "is-up" : profit != null ? "is-down" : ""}>
+                        {profit != null ? fmtBrl(profit, true) : "—"}
+                      </td>
+                      <td>
+                        <span className={`term-status ${open ? "is-open" : "is-closed"}`}>
+                          {open ? "● Aberto" : "✔ Fechado"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </article>
+
         <article className="term-panel term-extract-panel">
           <header className="term-panel-head">
             <h3>Extrato das Operações</h3>
@@ -611,49 +718,6 @@ export function TradingTerminal({
             </table>
           </div>
         </article>
-
-        <aside className="term-side-stack">
-          <article className="term-panel">
-            <Gauge value={todayRoiPct} max={dailyMetaPct} label="META" />
-          </article>
-
-          <article className="term-panel term-mini-stats">
-            <div><span>Maior Green</span><strong className="is-up">{fmtBrl(stats.maxGreen, true)}</strong></div>
-            <div><span>Maior Red</span><strong className="is-down">{fmtBrl(stats.maxRed, true)}</strong></div>
-            <div><span>Sequência</span><strong>{stats.streak} Greens</strong></div>
-            <div><span>Operações</span><strong>{stats.operations}</strong></div>
-            <div><span>Dias positivos</span><strong>{stats.positiveDayPct.toFixed(0)}%</strong></div>
-          </article>
-
-          <article className="term-panel">
-            <header className="term-panel-head">
-              <h3>Linha do tempo</h3>
-            </header>
-            <ol className="term-timeline">
-              {timeline.length === 0 && (
-                <li className="term-timeline-empty">Sem operações recentes</li>
-              )}
-              {timeline.map((item, i) => (
-                <li key={i} className={item.done ? "is-done" : "is-pending"}>
-                  <time>{item.time}</time>
-                  <div>
-                    <strong>
-                      {item.done ? "✔" : "○"}{" "}
-                      {item.kind === "entrada" ? "Entrada Lay" : item.kind === "hedge" ? item.label : item.label}
-                    </strong>
-                    {item.kind === "entrada" && <p>{item.label}</p>}
-                    {item.profit != null && (
-                      <p className={item.profit >= 0 ? "is-up" : "is-down"}>
-                        {fmtBrl(item.profit, true)}
-                      </p>
-                    )}
-                  </div>
-                  {i < timeline.length - 1 && <span className="term-timeline-arrow">↓</span>}
-                </li>
-              ))}
-            </ol>
-          </article>
-        </aside>
       </section>
 
       <footer className="term-foot">

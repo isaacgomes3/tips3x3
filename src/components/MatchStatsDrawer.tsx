@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { MomentumChart } from "@/components/MomentumChart";
 import type { FotmobRichMatch, FotmobPlayerCard } from "@/lib/fotmob/rich";
@@ -184,6 +184,7 @@ export function MatchStatsDrawer({
   const [data, setData] = useState<StatsPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<TabKey>("resumo");
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!target) {
@@ -231,6 +232,10 @@ export function MatchStatsDrawer({
     return () => window.removeEventListener("keydown", onKey);
   }, [target, onClose]);
 
+  useEffect(() => {
+    bodyRef.current?.scrollTo({ top: 0 });
+  }, [tab]);
+
   if (!target) return null;
 
   const fm = data?.fotmob;
@@ -264,9 +269,13 @@ export function MatchStatsDrawer({
   const possession = topStats.find((s) => /posse|possession/i.test(s.name));
   const otherTop = topStats.filter((s) => s !== possession);
 
+  const hasLineupPlayers = Boolean(
+    fm?.lineup?.home?.starters?.length || fm?.lineup?.away?.starters?.length,
+  );
+
   const tabs: Array<{ key: TabKey; label: string; show?: boolean }> = [
     { key: "resumo", label: "Resumo" },
-    { key: "escalacao", label: "Escalação", show: Boolean(fm?.lineup) },
+    { key: "escalacao", label: "Escalação", show: hasLineupPlayers },
     {
       key: "forma",
       label: "Forma",
@@ -276,6 +285,9 @@ export function MatchStatsDrawer({
     { key: "stats", label: "Stats" },
     { key: "timeline", label: "Timeline" },
   ];
+
+  const visibleTabs = tabs.filter((t) => t.show !== false);
+  const activeTab = visibleTabs.some((t) => t.key === tab) ? tab : "resumo";
 
   return (
     <div className="stats-drawer-root" role="presentation">
@@ -291,56 +303,56 @@ export function MatchStatsDrawer({
         aria-modal="true"
         aria-label="Estatísticas do jogo"
       >
-        <header className="fm-drawer-head">
-          <div className="fm-scoreboard">
-            <div className="fm-team is-home">
-              {fm?.homeLogo ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={fm.homeLogo} alt="" width={36} height={36} />
-              ) : null}
-              <strong>{homeName}</strong>
+        <div className="fm-drawer-chrome">
+          <header className="fm-drawer-head">
+            <div className="fm-scoreboard">
+              <div className="fm-team is-home">
+                {fm?.homeLogo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={fm.homeLogo} alt="" width={36} height={36} />
+                ) : null}
+                <strong>{homeName}</strong>
+              </div>
+              <div className="fm-score-mid">
+                <strong>{score}</strong>
+                {minuteLabel ? <em>{minuteLabel}</em> : null}
+              </div>
+              <div className="fm-team is-away">
+                <strong>{awayName}</strong>
+                {fm?.awayLogo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={fm.awayLogo} alt="" width={36} height={36} />
+                ) : null}
+              </div>
             </div>
-            <div className="fm-score-mid">
-              <strong>{score}</strong>
-              {minuteLabel ? <em>{minuteLabel}</em> : null}
-            </div>
-            <div className="fm-team is-away">
-              <strong>{awayName}</strong>
-              {fm?.awayLogo ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={fm.awayLogo} alt="" width={36} height={36} />
-              ) : null}
-            </div>
-          </div>
-          {(target.competition ?? fm?.competition) ? (
-            <p className="fm-comp">{target.competition ?? fm?.competition}</p>
-          ) : null}
-          <button
-            type="button"
-            className="stats-drawer-close"
-            onClick={onClose}
-            aria-label="Fechar"
-          >
-            <X />
-          </button>
-        </header>
+            {(target.competition ?? fm?.competition) ? (
+              <p className="fm-comp">{target.competition ?? fm?.competition}</p>
+            ) : null}
+            <button
+              type="button"
+              className="stats-drawer-close"
+              onClick={onClose}
+              aria-label="Fechar"
+            >
+              <X />
+            </button>
+          </header>
 
-        <nav className="fm-tabs" aria-label="Abas">
-          {tabs
-            .filter((t) => t.show !== false)
-            .map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                className={tab === t.key ? "is-active" : ""}
-                onClick={() => setTab(t.key)}
-              >
-                {t.label}
-              </button>
-            ))}
-        </nav>
+          <nav className="fm-tabs" aria-label="Abas">
+            {visibleTabs.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={activeTab === t.key ? "is-active" : ""}
+                  onClick={() => setTab(t.key)}
+                >
+                  {t.label}
+                </button>
+              ))}
+          </nav>
+        </div>
 
-        <div className="stats-drawer-body fm-body">
+        <div ref={bodyRef} className="stats-drawer-body fm-body">
           {loading && !data ? (
             <p className="stats-drawer-muted">Carregando estatísticas…</p>
           ) : null}
@@ -351,7 +363,7 @@ export function MatchStatsDrawer({
             </p>
           ) : null}
 
-          {tab === "resumo" && (
+          {activeTab === "resumo" && (
             <div className="fm-overview">
               <section className="fm-card">
                 <div className="fm-card-split">
@@ -399,8 +411,13 @@ export function MatchStatsDrawer({
             </div>
           )}
 
-          {tab === "escalacao" && fm?.lineup && (
+          {activeTab === "escalacao" && fm?.lineup && (
             <div className="fm-lineup">
+              {!hasLineupPlayers ? (
+                <p className="stats-drawer-muted">
+                  Escalação ainda não disponível para este jogo.
+                </p>
+              ) : null}
               <div className="fm-lineup-head">
                 <div>
                   {fm.lineup.home?.logoUrl ? (
@@ -458,7 +475,7 @@ export function MatchStatsDrawer({
             </div>
           )}
 
-          {tab === "forma" && fm && (
+          {activeTab === "forma" && fm && (
             <div className="fm-form">
               <h3>Team form</h3>
               <div className="fm-form-grid">
@@ -468,7 +485,7 @@ export function MatchStatsDrawer({
             </div>
           )}
 
-          {tab === "tabela" && fm?.table && (
+          {activeTab === "tabela" && fm?.table && (
             <div className="fm-table-wrap">
               <h3>{fm.table.leagueName}</h3>
               <div className="fm-table-scroll">
@@ -536,8 +553,9 @@ export function MatchStatsDrawer({
             </div>
           )}
 
-          {tab === "stats" && (
-            <div className="stats-list fm-all-stats">
+          {activeTab === "stats" && (
+            <section className="fm-card fm-all-stats">
+              <div className="stats-list">
               {(fm?.allStats?.length ? fm.allStats : data?.stats ?? []).map(
                 (row) => {
                   const h = parseNum(row.home);
@@ -569,10 +587,11 @@ export function MatchStatsDrawer({
                   );
                 },
               )}
-            </div>
+              </div>
+            </section>
           )}
 
-          {tab === "timeline" && (
+          {activeTab === "timeline" && (
             <ul className="stats-timeline">
               {(data?.timeline ?? []).length === 0 && !(fm?.goals.length) ? (
                 <li className="stats-drawer-muted">Sem eventos na timeline.</li>

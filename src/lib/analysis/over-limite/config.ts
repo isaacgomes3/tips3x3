@@ -2,6 +2,12 @@
 export const OVER_LIMITE = {
   /** Linha padrão nesta base */
   line: 2.5 as const,
+  /**
+   * Gate de entrada por placar:
+   * - totalGoals ≤ 1: correction + ticks + liquidity + gap
+   * - totalGoals = 2: regra completa (+ oddsBand + momento sem pressão bad)
+   */
+  earlyScoreMaxGoals: 1,
   /** Gap máximo back→lay (ticks) para mercado “justo” */
   maxGapTicks: 2,
   /** Liquidez mínima no lay (BRL) */

@@ -12,6 +12,7 @@ import {
   resolveInitialFavorite,
   scoreFromInplay,
 } from "./score-entry";
+import { nextTradableOdd } from "./over-limite/ticks";
 
 export type RiskTier = "baixo" | "medio" | "alto" | "fora";
 
@@ -90,7 +91,9 @@ export function targetBackForLiabilityProfit(
   if (!Number.isFinite(layOdds) || layOdds <= 1) return null;
   const denom = 1 - targetPct * (layOdds - 1);
   if (denom <= 0.05) return null;
-  return layOdds / denom;
+  const raw = layOdds / denom;
+  // Arredonda para cima no tick válido do exchange (ex.: 7.68 → 7.8).
+  return nextTradableOdd(layOdds, raw) ?? raw;
 }
 
 export function assessTradeRisk(

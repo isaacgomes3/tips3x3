@@ -14,6 +14,7 @@ rsync -az --delete \
   --exclude .next \
   --exclude .git \
   --exclude deploy \
+  --exclude mobile \
   --exclude '*.mts' \
   --exclude scripts-probe* \
   "${LOCAL_ROOT}/" "${HOST}:${APP_DIR}/"

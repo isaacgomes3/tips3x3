@@ -6,7 +6,7 @@ import {
 } from "@/lib/analysis/correction";
 import { analyzeFluidity } from "@/lib/analysis/fluidity";
 import { OVER_LIMITE } from "./config";
-import { gapTicks, tickSizeAt, ticksBetween } from "./ticks";
+import { gapTicks, tickSizeAt, ticksBetween, nextTradableOdd } from "./ticks";
 import {
   OVER_INDICATOR_META,
   type OverIndicator,
@@ -270,16 +270,6 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function nextTradableOdd(from: number, target: number) {
-  let odd = from;
-  let steps = 0;
-  while (odd < target - 1e-9 && steps < 5000) {
-    odd += tickSizeAt(odd);
-    steps += 1;
-  }
-  return Number(odd.toFixed(2));
-}
-
 function buildExitPlan(opts: {
   layOdds: number | null;
   historyPoints: OddsHistoryPoint[];
@@ -317,6 +307,7 @@ function buildExitPlan(opts: {
 
   const rawTarget = layOdds / denominator;
   const targetBackOdds = nextTradableOdd(layOdds, rawTarget);
+  if (targetBackOdds == null || !(targetBackOdds > 1)) return null;
   const targetTicks = ticksBetween(layOdds, targetBackOdds);
   const etaMinutes =
     ticksPerMin > 0 && Number.isFinite(targetTicks)
@@ -366,18 +357,21 @@ export function buildOverLimiteSnapshot(opts: {
   awayBias?: number | null;
   totalGoals?: number | null;
   minute?: number | null;
+  /** Linha do Over (2.5, 3.5, …). Default: OVER_LIMITE.line */
+  line?: number;
   matchOdds?: {
     home?: { back?: number | null };
     away?: { back?: number | null };
   };
 }): OverLimiteSnapshot {
+  const line = opts.line ?? OVER_LIMITE.line;
   const points = opts.historyPoints ?? [];
   const layLiquidity = Number(opts.layLiquidity ?? 0) || 0;
   const totalGoals =
     opts.totalGoals != null && Number.isFinite(opts.totalGoals)
       ? opts.totalGoals
       : null;
-  const settled = totalGoals != null && totalGoals > OVER_LIMITE.line;
+  const settled = totalGoals != null && totalGoals > line;
 
   const fluidity = points.length
     ? analyzeFluidity(points, { ...OVER_LIMITE.fluidity })
@@ -407,15 +401,22 @@ export function buildOverLimiteSnapshot(opts: {
     buildOddsBandIndicator(opts.layOdds),
   ];
 
-  // Gate: correção + book justo. Viés Over pré-live e momento são reforço, não bloqueio.
-  const criticalIds = new Set(["correction", "ticks", "liquidity", "gap", "oddsBand"]);
+  // Gate por placar:
+  // ≤1 gol: 4 índices (correção, ticks, liquidez, gap)
+  // 2 gols: regra completa (5 críticos + momento sem pressão bad)
+  const goalsKnown = totalGoals != null;
+  const earlyScore =
+    !goalsKnown || totalGoals <= OVER_LIMITE.earlyScoreMaxGoals;
+  const criticalIds = earlyScore
+    ? new Set(["correction", "ticks", "liquidity", "gap"])
+    : new Set(["correction", "ticks", "liquidity", "gap", "oddsBand"]);
   const goodCount = settled ? 0 : indicators.filter((i) => i.good).length;
   const criticalOk = indicators
     .filter((i) => criticalIds.has(i.id))
     .every((i) => i.good);
   const momentum = indicators.find((i) => i.id === "momentum");
-  // Pressão alta (bad) atrasa entrada; idle/good libera
-  const momentumOk = !momentum || momentum.tone !== "bad";
+  // Com 2 gols, pressão alta (bad) atrasa entrada; até 1 gol o momento não bloqueia.
+  const momentumOk = earlyScore || !momentum || momentum.tone !== "bad";
   const entryReady = !settled && criticalOk && momentumOk;
   const exitPlan = settled
     ? null
@@ -426,14 +427,17 @@ export function buildOverLimiteSnapshot(opts: {
         favoritePressureBias: opts.favoritePressureBias,
       });
 
+  const gateLabel = earlyScore
+    ? `≤${OVER_LIMITE.earlyScoreMaxGoals} gol · 4 filtros`
+    : `${OVER_LIMITE.earlyScoreMaxGoals + 1}+ gols · regra completa`;
   const summary = settled
-    ? `Over ${OVER_LIMITE.line} já atingido (${totalGoals} gols) — mercado encerrado para entrada.`
+    ? `Over ${line} já atingido (${totalGoals} gols) — mercado encerrado para entrada.`
     : entryReady
-    ? `Lay Over ${OVER_LIMITE.line} · correção/desajuste · ${goodCount}/${indicators.length} ok`
-    : `Lay Over ${OVER_LIMITE.line} · ${goodCount}/${indicators.length} ok — caçar correção`;
+    ? `Lay Over ${line} · ${gateLabel} · ${goodCount}/${indicators.length} ok`
+    : `Lay Over ${line} · ${gateLabel} · ${goodCount}/${indicators.length} ok — caçar correção`;
 
   return {
-    line: OVER_LIMITE.line,
+    line,
     settled,
     marketId: opts.marketId,
     runnerId: opts.runnerId,

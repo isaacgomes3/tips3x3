@@ -6,6 +6,8 @@ import { extractLay3x3 } from "./markets";
 export interface OpportunityRow {
   analysis: PreLiveAnalysis;
   mexchangeUrl: string;
+  overMexchangeUrl?: string;
+  overMexchangeUrl35?: string;
 }
 
 export async function scanDayOpportunities(options?: {
@@ -49,6 +51,12 @@ export async function scanDayOpportunities(options?: {
       opportunities.push({
         analysis,
         mexchangeUrl: mexchangeEventUrl(event.id, analysis.marketId),
+        overMexchangeUrl: analysis.overLimite.marketId
+          ? mexchangeEventUrl(event.id, analysis.overLimite.marketId)
+          : undefined,
+        overMexchangeUrl35: analysis.overLimite35.marketId
+          ? mexchangeEventUrl(event.id, analysis.overLimite35.marketId)
+          : undefined,
       });
     }
   }

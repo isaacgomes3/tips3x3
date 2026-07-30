@@ -13,15 +13,11 @@ export function LiveAlertToasts({
   onDismiss,
   alertsArmed,
   onArmAlerts,
-  extAutoSend,
-  onExtAutoSendChange,
 }: {
   toasts: LiveToast[];
   onDismiss: (id: string) => void;
   alertsArmed?: boolean;
   onArmAlerts?: () => void;
-  extAutoSend?: boolean;
-  onExtAutoSendChange?: (on: boolean) => void;
 }) {
   return (
     <>
@@ -34,17 +30,6 @@ export function LiveAlertToasts({
           >
             Ativar alertas ENTRAR (som + notificação)
           </button>
-        ) : null}
-
-        {onExtAutoSendChange ? (
-          <label className="live-alert-ext">
-            <input
-              type="checkbox"
-              checked={!!extAutoSend}
-              onChange={(e) => onExtAutoSendChange(e.target.checked)}
-            />
-            <span>Auto ENVIAR na extensão (odd do painel + saída da extensão)</span>
-          </label>
         ) : null}
       </div>
 

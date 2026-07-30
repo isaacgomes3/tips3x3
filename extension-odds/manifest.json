@@ -1,0 +1,74 @@
+{
+  "manifest_version": 3,
+  "name": "Tips3x3 Odds · Bet365 + Betnacional",
+  "version": "1.0.5",
+  "description": "Captura odds 1X2 (Bet365 e Betnacional) e envia ao painel Tips3x3 para comparar com a Bolsa.",
+  "permissions": ["storage", "cookies", "alarms", "tabs"],
+  "host_permissions": [
+    "https://tips3x3.com/*",
+    "https://www.tips3x3.com/*",
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*",
+    "*://*.bet365.bet.br/*",
+    "*://bet365.bet.br/*",
+    "*://*.bet365.com/*",
+    "*://bet365.com/*",
+    "*://*.bet365.com.br/*",
+    "*://bet365.com.br/*",
+    "*://*.betnacional.bet.br/*",
+    "*://betnacional.bet.br/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Tips3x3 Odds",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://tips3x3.com/*",
+        "https://www.tips3x3.com/*",
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*"
+      ],
+      "js": ["content/tips3x3-bridge.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://*.betnacional.bet.br/*",
+        "*://betnacional.bet.br/*",
+        "*://*.betnacional.com/*"
+      ],
+      "js": ["content/shared.js", "content/betnacional.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://*.bet365.bet.br/*",
+        "*://bet365.bet.br/*",
+        "*://*.bet365.com/*",
+        "*://bet365.com/*",
+        "*://*.bet365.com.br/*",
+        "*://bet365.com.br/*"
+      ],
+      "js": ["content/shared.js", "content/bet365.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}

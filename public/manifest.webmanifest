@@ -1,0 +1,21 @@
+{
+  "name": "Tips3x3 · Exchange Futebol",
+  "short_name": "Tips3x3",
+  "description": "Terminal de sinais Lay 3x3 e alertas ao vivo.",
+  "start_url": "/app?view=dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "lang": "pt-BR",
+  "categories": ["finance", "sports"],
+  "icons": [
+    {
+      "src": "/logo-tips3x3.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

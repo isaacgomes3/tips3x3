@@ -8,7 +8,12 @@ import {
   extractOverMarket,
   splitTeams,
 } from "./markets";
+import {
+  emptyEventosRarosSnapshot,
+  type EventosRarosSnapshot,
+} from "./eventos-raros";
 import { buildOverLimiteSnapshot, type OverLimiteSnapshot } from "./over-limite";
+import { emptyQovSnapshot, type QovSnapshot } from "./qov";
 import { buildTradePlan, type TradePlan } from "./trade-plan";
 
 export type SignalLevel = "strong" | "ok" | "weak" | "fail";
@@ -44,8 +49,14 @@ export interface PreLiveAnalysis {
   matchOdds: ReturnType<typeof extractMatchOdds>;
   bttsYes: number | null;
   over25: number | null;
-  /** Snapshot Lay over limite (indicadores + ícones) */
+  /** Snapshot Lay Over 2.5 (indicadores + ícones) */
   overLimite: OverLimiteSnapshot;
+  /** Snapshot Lay Over 3.5 (mesma lógica, linha 3.5) */
+  overLimite35: OverLimiteSnapshot;
+  /** QOV live-only — stub pré-live com entryReady=false */
+  qovLayUnderdog: QovSnapshot;
+  /** Eventos raros CS lay≥100 — stub pré-live */
+  eventosRaros: EventosRarosSnapshot;
   signals: AnalysisSignal[];
   score: number;
   idealOdds: boolean;
@@ -120,6 +131,7 @@ export function analyzePreLive(
   const bttsYes = extractBttsYes(event);
   const over25 = extractOver25(event);
   const overMkt = extractOverMarket(event, 2.5);
+  const overMkt35 = extractOverMarket(event, 3.5);
   const competition = event["meta-tags"]?.find((t) => t.type === "COMPETITION")
     ?.name;
 
@@ -244,6 +256,9 @@ export function analyzePreLive(
     targetProfitPct: opts?.targetProfitPct,
   });
 
+  const favoriteSide =
+    (matchOdds.home.back ?? 99) <= (matchOdds.away.back ?? 99) ? "home" : "away";
+
   const overLimite = buildOverLimiteSnapshot({
     layOdds: overMkt.layOdds,
     backOdds: overMkt.backOdds,
@@ -252,8 +267,20 @@ export function analyzePreLive(
     runnerId: overMkt.runnerId,
     over25Back: over25,
     matchOdds,
-    favoriteSide:
-      (matchOdds.home.back ?? 99) <= (matchOdds.away.back ?? 99) ? "home" : "away",
+    favoriteSide,
+    line: 2.5,
+  });
+
+  const overLimite35 = buildOverLimiteSnapshot({
+    layOdds: overMkt35.layOdds,
+    backOdds: overMkt35.backOdds,
+    layLiquidity: overMkt35.liquidity,
+    marketId: overMkt35.marketId,
+    runnerId: overMkt35.runnerId,
+    over25Back: overMkt35.backOdds,
+    matchOdds,
+    favoriteSide,
+    line: 3.5,
   });
 
   const summaryText = buildSummary({
@@ -286,6 +313,9 @@ export function analyzePreLive(
     bttsYes,
     over25,
     overLimite,
+    overLimite35,
+    qovLayUnderdog: emptyQovSnapshot("lay-underdog"),
+    eventosRaros: emptyEventosRarosSnapshot(),
     signals,
     score,
     idealOdds,

@@ -291,7 +291,17 @@ export async function getFotmobMatchIntel(opts: {
     }
   }
 
-  if (!best || best.score < 0.45) return null;
+  if (!best || best.score < 0.55) return null;
+
+  // Evita falso positivo (ex.: "Athletic" → Athletic Club) sem horário alinhado.
+  if (best.score < 0.72 && opts.start) {
+    const utc = best.match.status?.utcTime;
+    if (!utc) return null;
+    const deltaMin =
+      Math.abs(new Date(utc).getTime() - new Date(opts.start).getTime()) /
+      60_000;
+    if (deltaMin > 90) return null;
+  }
 
   const details = await fotmobJson<Record<string, unknown>>(
     `/api/data/matchDetails?matchId=${best.match.id}`,

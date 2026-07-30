@@ -1,0 +1,27 @@
+{
+  "name": "tips3x3-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shell Android/iOS Tips3x3 (Capacitor)",
+  "scripts": {
+    "sync": "cap sync android",
+    "open": "cap open android",
+    "build:debug": "cap sync android && cd android && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\"&& gradlew.bat assembleDebug",
+    "build:release": "cap sync android && cd android && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\"&& gradlew.bat assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.2.0",
+    "@capacitor/app": "^7.0.1",
+    "@capacitor/core": "^7.2.0",
+    "@capacitor/local-notifications": "^7.0.1",
+    "@capacitor/splash-screen": "^7.0.1",
+    "@capacitor/status-bar": "^7.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.2.0",
+    "typescript": "^5"
+  },
+  "capacitor": {
+    "platforms": ["android"]
+  }
+}

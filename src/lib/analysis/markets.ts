@@ -37,6 +37,54 @@ export function bestPrice(
   );
 }
 
+/** Runner QOV no Correct Score (ANY OTHER HOME/AWAY WIN). */
+export function extractQovMarket(
+  event: BetBraEvent,
+  side: "home" | "away",
+) {
+  const market = findMarket(event, "Correct Score");
+  const patterns =
+    side === "home"
+      ? [/any\s*other\s*home/i, /qov\s*casa/i, /outra.*casa/i]
+      : [/any\s*other\s*away/i, /qov\s*fora/i, /outra.*fora/i];
+  const runner = market?.runners?.find((r) =>
+    patterns.some((re) => re.test(r.name)),
+  );
+  const lay = bestPrice(runner?.prices, "lay");
+  const back = bestPrice(runner?.prices, "back");
+
+  return {
+    market,
+    runner,
+    side,
+    selection:
+      side === "home"
+        ? ("any-other-home" as const)
+        : ("any-other-away" as const),
+    lay,
+    back,
+    layOdds: lay?.odds ?? null,
+    backOdds:
+      back?.odds ?? runner?.["last-matched-odds"] ?? null,
+    quotes: {
+      back: {
+        odds: back?.odds ?? runner?.["last-matched-odds"] ?? null,
+        amount: back?.["available-amount"] ?? 0,
+      },
+      lay: {
+        odds: lay?.odds ?? null,
+        amount: lay?.["available-amount"] ?? 0,
+      },
+      lastMatched: runner?.["last-matched-odds"] ?? null,
+    },
+    layLiquidity: lay?.["available-amount"] ?? 0,
+    backLiquidity: back?.["available-amount"] ?? 0,
+    volume: runner?.volume ?? 0,
+    marketId: market?.id,
+    runnerId: runner?.id,
+  };
+}
+
 export function extractLay3x3(event: BetBraEvent) {
   const market = findMarket(event, "Correct Score");
   const runner = findRunner(market, "3-3");
@@ -78,9 +126,18 @@ export function extractLay3x3(event: BetBraEvent) {
 export function extractMatchOdds(event: BetBraEvent) {
   const market = findMarket(event, "Match Odds");
   const runners = market?.runners ?? [];
-  const home = runners[0];
-  const draw = runners.find((r) => /draw|empate|x/i.test(r.name)) ?? runners[1];
-  const away = runners[runners.length - 1];
+  const draw =
+    runners.find((r) => /^(draw|empate|the draw)$/i.test(r.name.trim())) ??
+    runners.find((r) => /draw|empate/i.test(r.name));
+
+  // Não usar runners[last]: em vários books o Empate vem por último e
+  // "away" acabava igual ao draw (edges/surebets falsos na comparação).
+  const nonDraw = runners.filter((r) => r !== draw);
+  const home = nonDraw[0] ?? runners[0];
+  const away =
+    nonDraw.find((r) => r !== home) ??
+    runners.find((r) => r !== home && r !== draw) ??
+    nonDraw[1];
 
   return {
     market,
@@ -180,4 +237,61 @@ export function splitTeams(eventName: string): { home: string; away: string } {
     return { home: parts[0].trim(), away: parts.slice(1).join(" vs ").trim() };
   }
   return { home: eventName, away: "" };
+}
+
+/** Placar exato "H-A" / "H–A" — ignora ANY OTHER / QOV / texto. */
+export function parseCorrectScoreLabel(
+  name: string,
+): { home: number; away: number; label: string } | null {
+  const m = name.trim().match(/^(\d+)\s*[-–—]\s*(\d+)$/);
+  if (!m) return null;
+  const home = Number(m[1]);
+  const away = Number(m[2]);
+  if (!Number.isFinite(home) || !Number.isFinite(away)) return null;
+  return { home, away, label: `${home}-${away}` };
+}
+
+/**
+ * Varre Correct Score por runners com melhor lay ≥ minLay.
+ * Ordena lay desc (mais raro primeiro).
+ */
+export function listHighLayCorrectScores(event: BetBraEvent, minLay = 100) {
+  const market = findMarket(event, "Correct Score");
+  const out: Array<{
+    label: string;
+    home: number;
+    away: number;
+    marketId?: string;
+    runnerId?: string;
+    layOdds: number;
+    backOdds: number | null;
+    layLiquidity: number;
+    backLiquidity: number;
+    volume: number;
+  }> = [];
+
+  for (const runner of market?.runners ?? []) {
+    const parsed = parseCorrectScoreLabel(runner.name);
+    if (!parsed) continue;
+    const lay = bestPrice(runner.prices, "lay");
+    const back = bestPrice(runner.prices, "back");
+    const layOdds = lay?.odds;
+    if (layOdds == null || !(layOdds >= minLay)) continue;
+
+    out.push({
+      label: parsed.label,
+      home: parsed.home,
+      away: parsed.away,
+      marketId: market?.id,
+      runnerId: runner.id,
+      layOdds,
+      backOdds: back?.odds ?? runner["last-matched-odds"] ?? null,
+      layLiquidity: lay?.["available-amount"] ?? 0,
+      backLiquidity: back?.["available-amount"] ?? 0,
+      volume: runner.volume ?? 0,
+    });
+  }
+
+  out.sort((a, b) => b.layOdds - a.layOdds);
+  return { market, candidates: out };
 }

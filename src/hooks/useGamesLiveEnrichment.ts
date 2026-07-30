@@ -122,18 +122,18 @@ export function useGamesLiveEnrichment(
             const scoreLabel = json.scoreLabel
               ? normalizeScoreLabel(json.scoreLabel)
               : null;
-            // Só jogos na janela de kickoff entram em pending — placar válido basta
-            if (!scoreLabel) return null;
-
             const minute =
               parseMinute(json.minute) ??
               parseMinute(json.status) ??
               estimateMinuteFromKickoff(game.start);
 
+            // Placar da API, ou pelo menos minuto estimado na janela live
+            if (!scoreLabel && minute == null) return null;
+
             return {
               game,
               snap: {
-                scoreLabel,
+                scoreLabel: scoreLabel ?? "",
                 minute,
                 status: json.status ?? "Ao vivo",
               } satisfies EnrichedLiveSnapshot,

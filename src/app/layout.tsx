@@ -23,6 +23,16 @@ export const metadata: Metadata = {
   title: "tips3x3 · Exchange Futebol com IA",
   description:
     "Análises em tempo real, filtros inteligentes e estratégias profissionais para quem opera o mercado de Exchange Futebol.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Tips3x3",
+  },
+  icons: {
+    icon: "/logo-tips3x3.png",
+    apple: "/logo-tips3x3.png",
+  },
 };
 
 export const viewport = {

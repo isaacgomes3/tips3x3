@@ -12,6 +12,7 @@ import { LiveAlertToasts } from "@/components/LiveAlertToasts";
 import { NativeShell } from "@/components/NativeShell";
 import { CentralGestao } from "@/components/CentralGestao";
 import { TradingTerminal } from "@/components/terminal/TradingTerminal";
+import { OddsComparePanel } from "@/components/OddsComparePanel";
 import { useBankrollData } from "@/hooks/useBankrollData";
 import { useGamesLiveEnrichment, type EnrichedLiveSnapshot } from "@/hooks/useGamesLiveEnrichment";
 import { MatchStatsDrawer, type StatsTarget } from "@/components/MatchStatsDrawer";
@@ -28,6 +29,7 @@ import {
   Radio,
   Star,
   Target,
+  Sparkles,
 } from "lucide-react";
 
 type OverIndicatorTone = "good" | "warn" | "bad" | "idle";
@@ -127,6 +129,114 @@ type TradePlan = {
   };
 };
 
+type QovSnapshot = {
+  mode: "lay-underdog" | "back-favorite";
+  selection: "any-other-home" | "any-other-away" | null;
+  favoriteSide: "home" | "away" | null;
+  underdogSide: "home" | "away" | null;
+  side: "lay" | "back";
+  settled: boolean;
+  marketId?: string;
+  runnerId?: string;
+  layOdds: number | null;
+  backOdds: number | null;
+  entryOdds: number | null;
+  liquidity: number;
+  gapTicks: number | null;
+  favoritePressureBias: number | null;
+  goodCount: number;
+  entryReady: boolean;
+  exitPlan: {
+    entryOdds: number;
+    exitOdds: number;
+    targetProfitPct: number;
+    entrySide: "lay" | "back";
+    exitSide: "lay" | "back";
+    summary: string;
+  } | null;
+  summary: string;
+  blockers: string[];
+  indicators: Array<{
+    id: string;
+    label: string;
+    icon: string;
+    tone: OverIndicatorTone;
+    good: boolean;
+    detail: string;
+    value?: number | null;
+  }>;
+};
+
+type EventosRarosSnapshot = {
+  settled: boolean;
+  marketId?: string;
+  runnerId?: string;
+  best: {
+    label: string;
+    home: number;
+    away: number;
+    layOdds: number;
+    backOdds: number | null;
+    liquidity: number;
+    goalsNeeded: number;
+    remainingMinutes: number;
+    timeBlocked: boolean;
+    impliedProb: number;
+    modelProb: number | null;
+    stillPossible: boolean;
+    entryReady?: boolean;
+  } | null;
+  entries: Array<{
+    label: string;
+    layOdds: number;
+    backOdds: number | null;
+    liquidity: number;
+    goalsNeeded: number;
+    remainingMinutes: number;
+    timeBlocked: boolean;
+    stillPossible: boolean;
+    impliedProb: number;
+    modelProb: number | null;
+    entryReady?: boolean;
+    runnerId?: string;
+    marketId?: string;
+  }>;
+  candidates: Array<{
+    label: string;
+    layOdds: number;
+    goalsNeeded: number;
+    remainingMinutes: number;
+    timeBlocked: boolean;
+    stillPossible: boolean;
+    impliedProb: number;
+    modelProb: number | null;
+    entryReady?: boolean;
+  }>;
+  layOdds: number | null;
+  backOdds: number | null;
+  scoreLabel: string | null;
+  scoreLabels: string[];
+  liquidity: number;
+  gapTicks: number | null;
+  minute: number | null;
+  homeScore: number | null;
+  awayScore: number | null;
+  goodCount: number;
+  entryReady: boolean;
+  exitPlan: null;
+  summary: string;
+  blockers: string[];
+  indicators: Array<{
+    id: string;
+    label: string;
+    icon: string;
+    tone: OverIndicatorTone;
+    good: boolean;
+    detail: string;
+    value?: number | null;
+  }>;
+};
+
 type OpportunityPayload = {
   generatedAt: string;
   window: { min: number; max: number; preferredMax?: number; minLiquidity: number };
@@ -135,6 +245,8 @@ type OpportunityPayload = {
     mexchangeUrl: string;
     overMexchangeUrl?: string;
     overMexchangeUrl35?: string;
+    qovMexchangeUrl?: string;
+    eventosRarosMexchangeUrl?: string;
     analysis: {
       eventId: string;
       eventName: string;
@@ -157,6 +269,9 @@ type OpportunityPayload = {
       over25: number | null;
       overLimite?: OverLimiteSnapshot;
       overLimite35?: OverLimiteSnapshot;
+      qovLayUnderdog?: QovSnapshot;
+      qovBackFavorite?: QovSnapshot;
+      eventosRaros?: EventosRarosSnapshot;
       score: number;
       idealOdds: boolean;
       watchlist: boolean;
@@ -201,10 +316,15 @@ type LivePayload = {
     mexchangeUrl: string;
     overMexchangeUrl?: string;
     overMexchangeUrl35?: string;
+    qovMexchangeUrl?: string;
+    eventosRarosMexchangeUrl?: string;
     reasons: string[];
     tradePlan?: TradePlan;
     overLimite?: OverLimiteSnapshot;
     overLimite35?: OverLimiteSnapshot;
+    qovLayUnderdog?: QovSnapshot;
+    qovBackFavorite?: QovSnapshot;
+    eventosRaros?: EventosRarosSnapshot;
     live: null | {
       scoreLabel: string;
       minute: number | null;
@@ -240,20 +360,59 @@ type LivePayload = {
       tradePlan?: TradePlan;
       overLimite?: OverLimiteSnapshot;
       overLimite35?: OverLimiteSnapshot;
+      qovLayUnderdog?: QovSnapshot;
+      qovBackFavorite?: QovSnapshot;
+      eventosRaros?: EventosRarosSnapshot;
     };
   }>;
   error?: string;
 };
 
-type NavView = "dashboard" | "jogos" | "live" | "alertas" | "gestao" | "evento" | "config";
-type StrategyId = "lay-3x3" | "over-limite" | "over-limite-35";
+type NavView =
+  | "dashboard"
+  | "jogos"
+  | "live"
+  | "alertas"
+  | "gestao"
+  | "comparar"
+  | "evento"
+  | "config";
+type StrategyId = "lay-3x3" | "qov-lay-zebra" | "eventos-raros";
 
-function isOverStrategy(strategy: StrategyId): boolean {
-  return strategy === "over-limite" || strategy === "over-limite-35";
+function isQovStrategy(strategy: StrategyId): boolean {
+  return strategy === "qov-lay-zebra";
 }
 
-function overLineForStrategy(strategy: StrategyId): number {
-  return strategy === "over-limite-35" ? 3.5 : 2.5;
+function isEventosRarosStrategy(strategy: StrategyId): boolean {
+  return strategy === "eventos-raros";
+}
+
+function isLiveOnlyStrategy(strategy: StrategyId): boolean {
+  return isQovStrategy(strategy) || isEventosRarosStrategy(strategy);
+}
+
+function resolveQov(
+  row: OpportunityRow,
+  liveRow?: LivePayload["rows"][number],
+): QovSnapshot | null {
+  return (
+    liveRow?.qovLayUnderdog ??
+    liveRow?.analysis?.qovLayUnderdog ??
+    row.analysis.qovLayUnderdog ??
+    null
+  );
+}
+
+function resolveEventosRaros(
+  row: OpportunityRow,
+  liveRow?: LivePayload["rows"][number],
+): EventosRarosSnapshot | null {
+  return (
+    liveRow?.eventosRaros ??
+    liveRow?.analysis?.eventosRaros ??
+    row.analysis.eventosRaros ??
+    null
+  );
 }
 
 function normalizeTeamKey(home: string, away: string) {
@@ -274,6 +433,7 @@ function isNavView(v: string | null): v is NavView {
     v === "live" ||
     v === "alertas" ||
     v === "gestao" ||
+    v === "comparar" ||
     v === "evento" ||
     v === "config"
   );
@@ -282,41 +442,9 @@ function isNavView(v: string | null): v is NavView {
 function strategyFilterReady(strategy: StrategyId): boolean {
   return (
     strategy === "lay-3x3" ||
-    strategy === "over-limite" ||
-    strategy === "over-limite-35"
+    strategy === "qov-lay-zebra" ||
+    strategy === "eventos-raros"
   );
-}
-
-function resolveOverLimite(
-  row: OpportunityRow,
-  liveRow?: LivePayload["rows"][number],
-  strategy: StrategyId = "over-limite",
-): OverLimiteSnapshot | null {
-  if (strategy === "over-limite-35") {
-    return (
-      liveRow?.overLimite35 ??
-      liveRow?.analysis?.overLimite35 ??
-      row.analysis.overLimite35 ??
-      null
-    );
-  }
-  return (
-    liveRow?.overLimite ??
-    liveRow?.analysis?.overLimite ??
-    row.analysis.overLimite ??
-    null
-  );
-}
-
-function resolveOverMarketUrl(
-  row: OpportunityRow,
-  liveRow?: LivePayload["rows"][number],
-  strategy: StrategyId = "over-limite",
-): string | undefined {
-  if (strategy === "over-limite-35") {
-    return liveRow?.overMexchangeUrl35 ?? row.overMexchangeUrl35;
-  }
-  return liveRow?.overMexchangeUrl ?? row.overMexchangeUrl;
 }
 
 function formatKickTime(iso: string) {
@@ -554,6 +682,8 @@ export function Dashboard() {
           mexchangeUrl: r.mexchangeUrl,
           overMexchangeUrl: r.overMexchangeUrl,
           overMexchangeUrl35: r.overMexchangeUrl35,
+          qovMexchangeUrl: r.qovMexchangeUrl,
+          eventosRarosMexchangeUrl: r.eventosRarosMexchangeUrl,
           analysis: {
             eventId: a.eventId,
             eventName: a.eventName,
@@ -572,6 +702,8 @@ export function Dashboard() {
             over25: a.over25 ?? null,
             overLimite: r.overLimite ?? a.overLimite,
             overLimite35: r.overLimite35 ?? a.overLimite35,
+            qovLayUnderdog: r.qovLayUnderdog ?? a.qovLayUnderdog,
+            eventosRaros: r.eventosRaros ?? a.eventosRaros,
             score: a.score,
             idealOdds: a.idealOdds ?? false,
             watchlist: a.watchlist ?? true,
@@ -594,7 +726,8 @@ export function Dashboard() {
     const liveList = liveAsOpportunities;
 
     let source: OpportunityRow[];
-    if (onlyLive) {
+    // QOV / Eventos raros são live-only
+    if (onlyLive || isLiveOnlyStrategy(strategy)) {
       source = liveList;
     } else {
       // Live primeiro (com placar/minuto), depois pré-live sem duplicar
@@ -608,14 +741,15 @@ export function Dashboard() {
     const filtered = source.filter((row) => {
       const a = row.analysis;
       if (onlyFavorites && !favoriteIds.has(a.eventId)) return false;
-      if (isOverStrategy(strategy)) {
-        const ol = resolveOverLimite(
-          row,
-          liveMap.get(a.eventId),
-          strategy,
-        );
-        // Com mercado Over (lay ou back) ou snapshot já calculado
-        if (!ol || (ol.layOdds == null && ol.backOdds == null)) {
+      if (isQovStrategy(strategy)) {
+        const qov = resolveQov(row, liveMap.get(a.eventId));
+        if (!qov || (qov.entryOdds == null && qov.layOdds == null)) {
+          return false;
+        }
+      }
+      if (isEventosRarosStrategy(strategy)) {
+        const er = resolveEventosRaros(row, liveMap.get(a.eventId));
+        if (!er || (er.layOdds == null && er.candidates.length === 0)) {
           return false;
         }
       }
@@ -644,13 +778,13 @@ export function Dashboard() {
       );
     };
     const isEntry = (row: OpportunityRow) => {
-      if (isOverStrategy(strategy)) {
-        const ol = resolveOverLimite(
-          row,
-          liveMap.get(row.analysis.eventId),
-          strategy,
-        );
-        return Boolean(ol?.entryReady);
+      if (isQovStrategy(strategy)) {
+        const qov = resolveQov(row, liveMap.get(row.analysis.eventId));
+        return Boolean(qov?.entryReady);
+      }
+      if (isEventosRarosStrategy(strategy)) {
+        const er = resolveEventosRaros(row, liveMap.get(row.analysis.eventId));
+        return Boolean(er?.entryReady);
       }
       const plan =
         liveMap.get(row.analysis.eventId)?.tradePlan ?? row.analysis.tradePlan;
@@ -687,13 +821,18 @@ export function Dashboard() {
         : Number.POSITIVE_INFINITY;
       if (ai !== bi) return ai - bi;
 
-      if (isOverStrategy(strategy)) {
+      if (isQovStrategy(strategy)) {
         const ag =
-          resolveOverLimite(a, liveMap.get(a.analysis.eventId), strategy)
-            ?.goodCount ?? 0;
+          resolveQov(a, liveMap.get(a.analysis.eventId))?.goodCount ?? 0;
         const bg =
-          resolveOverLimite(b, liveMap.get(b.analysis.eventId), strategy)
-            ?.goodCount ?? 0;
+          resolveQov(b, liveMap.get(b.analysis.eventId))?.goodCount ?? 0;
+        if (ag !== bg) return bg - ag;
+      }
+      if (isEventosRarosStrategy(strategy)) {
+        const ag =
+          resolveEventosRaros(a, liveMap.get(a.analysis.eventId))?.goodCount ?? 0;
+        const bg =
+          resolveEventosRaros(b, liveMap.get(b.analysis.eventId))?.goodCount ?? 0;
         if (ag !== bg) return bg - ag;
       }
       return 0;
@@ -754,14 +893,6 @@ export function Dashboard() {
         liveMap.get(row.analysis.eventId)?.tradePlan ?? row.analysis.tradePlan;
       return Boolean(plan?.entryReady);
     };
-    const overReady = (row: OpportunityRow, strat: StrategyId) => {
-      const ol = resolveOverLimite(
-        row,
-        liveMap.get(row.analysis.eventId),
-        strat,
-      );
-      return Boolean(ol?.entryReady);
-    };
     const lay3x3Filters = oppsList.length;
     const lay3x3Entries = oppsList.filter(lay3x3Ready).length;
     const lay3x3Waiting = oppsList.filter((r) => {
@@ -769,17 +900,21 @@ export function Dashboard() {
         liveMap.get(r.analysis.eventId)?.tradePlan ?? r.analysis.tradePlan;
       return Boolean(plan?.inEntryWindow && !plan?.entryReady);
     }).length;
-    const overEvents = oppsList.filter((r) => {
-      const ol = r.analysis.overLimite;
-      return ol && (ol.layOdds != null || ol.backOdds != null);
-    }).length;
-    const overEntries = oppsList.filter((r) => overReady(r, "over-limite")).length;
-    const over35Events = oppsList.filter((r) => {
-      const ol = r.analysis.overLimite35;
-      return ol && (ol.layOdds != null || ol.backOdds != null);
-    }).length;
-    const over35Entries = oppsList.filter((r) =>
-      overReady(r, "over-limite-35"),
+    const qovLayReady = (row: LivePayload["rows"][number]) =>
+      Boolean(row.qovLayUnderdog?.entryReady);
+    const qovLayEvents = liveList.filter(
+      (r) =>
+        r.qovLayUnderdog &&
+        (r.qovLayUnderdog.entryOdds != null ||
+          r.qovLayUnderdog.layOdds != null),
+    ).length;
+    const erReady = (row: LivePayload["rows"][number]) =>
+      Boolean(row.eventosRaros?.entryReady);
+    const erEvents = liveList.filter(
+      (r) =>
+        r.eventosRaros &&
+        (r.eventosRaros.layOdds != null ||
+          (r.eventosRaros.candidates?.length ?? 0) > 0),
     ).length;
     return {
       lay3x3: {
@@ -788,15 +923,15 @@ export function Dashboard() {
         waiting: lay3x3Waiting,
         operating: lay3x3Entries > 0 || (live?.entries ?? 0) > 0,
       },
-      overLimite: {
-        events: overEvents,
-        entries: overEntries,
-        monitoring: overEvents > 0,
+      qovLay: {
+        events: qovLayEvents,
+        entries: liveList.filter(qovLayReady).length,
+        monitoring: qovLayEvents > 0,
       },
-      overLimite35: {
-        events: over35Events,
-        entries: over35Entries,
-        monitoring: over35Events > 0,
+      eventosRaros: {
+        events: erEvents,
+        entries: liveList.filter(erReady).length,
+        monitoring: erEvents > 0,
       },
     };
   }, [opps, live, liveMap]);
@@ -835,6 +970,7 @@ export function Dashboard() {
   const topNavItems: Array<{ id: NavView | "planos"; label: string; href?: string }> = [
     { id: "dashboard", label: "Dashboard" },
     { id: "jogos", label: "Sinais" },
+    { id: "comparar", label: "Comparar" },
     { id: "live", label: "Resultados" },
     { id: "gestao", label: "Histórico" },
     { id: "planos", label: "Planos", href: "/" },
@@ -941,7 +1077,7 @@ export function Dashboard() {
       </header>
 
       <main className="main-pane is-terminal">
-        {view !== "dashboard" && view !== "gestao" && (
+        {view !== "dashboard" && view !== "gestao" && view !== "comparar" && (
         <header className="main-head">
           <div className="main-head-left">
             <div>
@@ -958,13 +1094,13 @@ export function Dashboard() {
                   "Alertas"
                 ) : view === "config" ? (
                   "Configurações"
-                ) : strategy === "over-limite" ? (
+                ) : strategy === "qov-lay-zebra" ? (
                   <>
-                    Lay <span>over 2.5</span>
+                    Lay <span>QOV zebra</span>
                   </>
-                ) : strategy === "over-limite-35" ? (
+                ) : strategy === "eventos-raros" ? (
                   <>
-                    Lay <span>over 3.5</span>
+                    Eventos <span>raros</span>
                   </>
                 ) : (
                   <>
@@ -1013,19 +1149,19 @@ export function Dashboard() {
                 </button>
                 <button
                   type="button"
-                  className={`pill ${strategy === "over-limite" ? "active" : ""}`}
-                  onClick={() => goStrategy("over-limite")}
+                  className={`pill ${strategy === "qov-lay-zebra" ? "active" : ""}`}
+                  onClick={() => goStrategy("qov-lay-zebra")}
                 >
                   <Target aria-hidden className="pill-icon" />
-                  Lay over 2.5
+                  Lay QOV zebra
                 </button>
                 <button
                   type="button"
-                  className={`pill ${strategy === "over-limite-35" ? "active" : ""}`}
-                  onClick={() => goStrategy("over-limite-35")}
+                  className={`pill ${strategy === "eventos-raros" ? "active" : ""}`}
+                  onClick={() => goStrategy("eventos-raros")}
                 >
-                  <Target aria-hidden className="pill-icon" />
-                  Lay over 3.5
+                  <Sparkles aria-hidden className="pill-icon" />
+                  Eventos raros
                 </button>
                 <button
                   type="button"
@@ -1067,7 +1203,7 @@ export function Dashboard() {
                 <div className="empty-icon" aria-hidden>
                   ≡
                 </div>
-                <strong>Nenhum filtro cadastrado para Lay over {overLineForStrategy(strategy)}</strong>
+                <strong>Estratégia indisponível</strong>
                 <p>
                   Quando o filtro desta estratégia for cadastrado, os jogos
                   aparecerão aqui com as mesmas ferramentas da lista.
@@ -1075,14 +1211,14 @@ export function Dashboard() {
               </div>
             ) : (
             <div
-              className={`match-board ${isOverStrategy(strategy) ? "is-over-limite" : ""}`}
+              className={`match-board ${isLiveOnlyStrategy(strategy) ? "is-over-limite" : ""}`}
             >
               <div className="match-board-head" aria-hidden>
                 <span className="match-col-fav">★</span>
                 <span className="match-col-time">Tempo</span>
                 <span className="match-col-sides">Times</span>
                 <span className="match-col-inds">
-                  {isOverStrategy(strategy) ? "Filtros" : "Sinais"}
+                  {isLiveOnlyStrategy(strategy) ? "Filtros" : "Sinais"}
                 </span>
                 <span className="match-col-status">Status</span>
                 <span className="match-col-odds">Mercado</span>
@@ -1098,8 +1234,10 @@ export function Dashboard() {
                     ≡
                   </div>
                   <strong>
-                    {isOverStrategy(strategy)
-                      ? `Nenhum Over ${overLineForStrategy(strategy)} com book agora`
+                    {isQovStrategy(strategy)
+                      ? "Nenhum Lay QOV zebra com setup agora"
+                      : isEventosRarosStrategy(strategy)
+                        ? "Nenhum evento raro (CS lay ≥ 100) agora"
                       : onlyFavorites
                         ? "Nenhum favorito nesta lista"
                         : onlyLive
@@ -1107,8 +1245,10 @@ export function Dashboard() {
                           : "Sem partidas com liquidez"}
                   </strong>
                   <p>
-                    {isOverStrategy(strategy)
-                      ? `A lista mostra jogos Over ${overLineForStrategy(strategy)}; a tese é lay contra o Over caçando correção e desajuste de odds.`
+                    {isQovStrategy(strategy)
+                      ? "Lay QOV zebra · live-only · trade com saída ~1%."
+                      : isEventosRarosStrategy(strategy)
+                        ? "Eventos raros · live late · hold até settle."
                       : onlyFavorites
                         ? "Toque na estrela de um jogo para fixá-lo no topo e receber gols."
                         : onlyLive
@@ -1226,14 +1366,14 @@ export function Dashboard() {
                 <span>
                   <strong>Auto ENVIAR na extensão</strong>
                   <em>
-                    No alerta ENTRAR (3-3 / Over 2.5 / 3.5), envia Lay com a odd
+                    No alerta ENTRAR (3-3 / QOV zebra), envia Lay com a odd
                     do painel e a saída Back pela % da extensão.
                   </em>
                 </span>
               </label>
               <p className="alertas-ext-hint">
                 {extAutoSend
-                  ? "Ligado — mantenha a extensão Bolsa Manual atualizada (v1.6+) e logada (Lay 3-3 / Over 2.5 / 3.5)."
+                  ? "Ligado — mantenha a extensão Bolsa Manual atualizada (v1.6+) e logada (Lay 3-3 / QOV zebra)."
                   : "Desligado — marque para ligar o envio automático."}
               </p>
             </div>
@@ -1267,6 +1407,12 @@ export function Dashboard() {
         {view === "gestao" && (
           <div className="panel-block">
             <CentralGestao />
+          </div>
+        )}
+
+        {view === "comparar" && (
+          <div className="panel-block">
+            <OddsComparePanel />
           </div>
         )}
 
@@ -1348,7 +1494,7 @@ export function Dashboard() {
                 <span>
                   <strong>Auto ENVIAR na extensão</strong>
                   <em>
-                    No alerta ENTRAR (Lay 3-3 / Over 2.5 / 3.5), envia Lay com a
+                    No alerta ENTRAR (Lay 3-3 / QOV zebra), envia Lay com a
                     odd do painel. A saída Back usa o lucro % da extensão.
                   </em>
                 </span>
@@ -1415,6 +1561,7 @@ function indicatorToneLabel(tone: OverIndicatorTone): string {
 
 function formatIndicatorValue(id: string, value: number): string {
   if (id === "liquidity") return `R$ ${value.toFixed(0)}`;
+  if (id === "momentum") return value.toFixed(2);
   if (id === "ticks" || id === "gap") {
     return Number.isInteger(value) ? String(value) : value.toFixed(1);
   }
@@ -1474,14 +1621,25 @@ function GameRow({
 }) {
   const a = row.analysis;
   const plan = liveRow?.tradePlan ?? a.tradePlan;
-  const overStrategy = isOverStrategy(strategy);
-  const over = resolveOverLimite(row, liveRow, strategy);
-  const marketLabel = overStrategy
-    ? `Over ${over?.line ?? overLineForStrategy(strategy)}`
-    : "Placar Correto · 3-3";
-  const marketUrl = overStrategy
-    ? resolveOverMarketUrl(row, liveRow, strategy)
-    : row.mexchangeUrl;
+  const qovStrategy = isQovStrategy(strategy);
+  const erStrategy = isEventosRarosStrategy(strategy);
+  const indicatorStrategy = qovStrategy || erStrategy;
+  const qov = resolveQov(row, liveRow);
+  const er = resolveEventosRaros(row, liveRow);
+  const marketLabel = qovStrategy
+    ? "QOV · Lay zebra"
+    : erStrategy
+      ? er?.entries && er.entries.length > 1
+        ? `CS · ${er.entries.length} placares`
+        : `CS · ${er?.scoreLabel ?? "raro"}`
+      : "Placar Correto · 3-3";
+  const marketUrl = qovStrategy
+    ? liveRow?.qovMexchangeUrl ?? row.qovMexchangeUrl ?? row.mexchangeUrl
+    : erStrategy
+      ? liveRow?.eventosRarosMexchangeUrl ??
+        row.eventosRarosMexchangeUrl ??
+        row.mexchangeUrl
+      : row.mexchangeUrl;
   const live =
     liveRow?.live ??
     (enrichedLive
@@ -1492,34 +1650,46 @@ function GameRow({
           stillPossible33: true,
         }
       : null);
-  const isLive = Boolean(live);
-  const status = overStrategy
-    ? over?.settled
+  const isLive = Boolean(live?.minute != null || live?.scoreLabel);
+  const status = qovStrategy
+    ? qov?.settled
       ? "ENCERRADO"
-      : over?.entryReady
+      : qov?.entryReady
         ? "ENTRAR"
-        : over && over.goodCount >= 4
+        : qov && qov.goodCount >= 1
           ? "ALINHANDO"
-          : "OVER"
-    : tradeStatus(plan);
+          : "QOV"
+    : erStrategy
+      ? er?.settled
+        ? "ENCERRADO"
+        : er?.entryReady
+          ? "ENTRAR"
+          : er && er.goodCount >= 1
+            ? "ALINHANDO"
+            : "RARO"
+      : tradeStatus(plan);
   const statusKey = status.toLowerCase().replace(/[^a-z0-9]+/g, "");
   const [homeGoals, awayGoals] = splitScoreLabel(live?.scoreLabel);
   const pulse =
     status === "ENTRAR"
       ? "is-pulse-entrar"
-      : !overStrategy &&
+      : !indicatorStrategy &&
           (status === "CORRIGINDO" || status === "ALINHANDO")
         ? "is-pulse-corrigindo"
         : "";
-  const showStatus = !overStrategy || status === "ENTRAR";
-  const overIndicators =
-    overStrategy && over && !over.settled ? over.indicators : [];
+  const showStatus = !indicatorStrategy || status === "ENTRAR";
+  const rowIndicators = qovStrategy && qov && !qov.settled
+    ? qov.indicators
+    : erStrategy && er && !er.settled
+      ? er.indicators
+      : [];
+  const indSnap = qovStrategy ? qov : erStrategy ? er : null;
 
   return (
     <div
       role="button"
       tabIndex={0}
-      className={`match-card ${overStrategy ? "is-over-limite" : ""} ${active ? "is-active" : ""} ${isLive ? "is-live" : ""} ${favorited ? "is-fav" : ""} ${pulse}`.trim()}
+      className={`match-card ${indicatorStrategy ? "is-over-limite" : ""} ${active ? "is-active" : ""} ${isLive ? "is-live" : ""} ${favorited ? "is-fav" : ""} ${pulse}`.trim()}
       onClick={onOpen}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -1561,7 +1731,7 @@ function GameRow({
       </div>
 
       <div className="match-card-inds">
-        {overIndicators.map((indicator) => (
+        {rowIndicators.map((indicator) => (
           <span
             key={indicator.id}
             className={`match-ind match-ind-${indicator.tone}${indicator.good ? " is-good" : ""}`}
@@ -1593,14 +1763,14 @@ function GameRow({
       </div>
 
       <div
-        className={`match-card-status ${overStrategy ? "is-over-limite" : ""}`}
+        className={`match-card-status ${indicatorStrategy ? "is-over-limite" : ""}`}
       >
         {showStatus && (
           <span className={`status-chip status-${statusKey}`}>{status}</span>
         )}
-        {overStrategy && over && !over.settled && (
+        {indicatorStrategy && indSnap && !indSnap.settled && (
           <span className="match-ind-count">
-            {over.goodCount}/{over.indicators.length}
+            {indSnap.goodCount}/{indSnap.indicators.length}
           </span>
         )}
       </div>
@@ -1620,12 +1790,28 @@ function GameRow({
         </button>
         <OddsQuoteButtons
           backOdds={
-            overStrategy ? over?.backOdds ?? null : a.quotes?.back.odds
+            qovStrategy
+              ? qov?.backOdds ?? null
+              : erStrategy
+                ? er?.backOdds ?? null
+                : a.quotes?.back.odds
           }
-          backAmount={overStrategy ? 0 : a.quotes?.back.amount ?? 0}
-          layOdds={overStrategy ? over?.layOdds ?? null : a.quotes?.lay.odds}
+          backAmount={
+            qovStrategy || erStrategy ? 0 : a.quotes?.back.amount ?? 0
+          }
+          layOdds={
+            qovStrategy
+              ? qov?.layOdds ?? null
+              : erStrategy
+                ? er?.layOdds ?? null
+                : a.quotes?.lay.odds
+          }
           layAmount={
-            overStrategy ? over?.layLiquidity ?? 0 : a.quotes?.lay.amount ?? 0
+            qovStrategy
+              ? qov?.liquidity ?? 0
+              : erStrategy
+                ? er?.liquidity ?? 0
+                : a.quotes?.lay.amount ?? 0
           }
           label={marketLabel}
           href={marketUrl}
@@ -1656,26 +1842,54 @@ function EventDetail({
   onToggle: (key: string) => void;
 }) {
   const a = selected.analysis;
-  const over = resolveOverLimite(selected, liveForSelected, strategy);
-  const isOverLimite = isOverStrategy(strategy);
-  const overStatus = over?.entryReady
+  const qov = resolveQov(selected, liveForSelected);
+  const er = resolveEventosRaros(selected, liveForSelected);
+  const isQov = isQovStrategy(strategy);
+  const isEr = isEventosRarosStrategy(strategy);
+  const isInd = isQov || isEr;
+  const qovStatus = qov?.entryReady
     ? "ENTRAR"
-    : over?.settled
+    : qov?.settled
       ? "ENCERRADO"
-      : over && over.goodCount >= 4
-      ? "CORRIGINDO"
       : "MONITORAR";
-  const marketLabel =
-    isOverLimite
-      ? `Over ${over?.line ?? overLineForStrategy(strategy)}`
+  const erStatus = er?.entryReady
+    ? "ENTRAR"
+    : er?.settled
+      ? "ENCERRADO"
+      : "MONITORAR";
+  const indStatus = isQov ? qovStatus : isEr ? erStatus : null;
+  const marketLabel = isQov
+    ? "QOV · Lay zebra"
+    : isEr
+      ? er?.entries && er.entries.length > 1
+        ? `CS · ${er.entries.length} placares`
+        : `CS · ${er?.scoreLabel ?? "Eventos raros"}`
       : "Placar Correto · 3-3";
-  const marketUrl = isOverLimite
-    ? resolveOverMarketUrl(selected, liveForSelected, strategy)
-    : selected.mexchangeUrl;
-  const backOdds = isOverLimite ? over?.backOdds ?? null : a.quotes?.back.odds;
-  const layOdds = isOverLimite ? over?.layOdds ?? null : a.quotes?.lay.odds;
-  const backAmount = isOverLimite ? 0 : a.quotes?.back.amount ?? 0;
-  const layAmount = isOverLimite ? over?.layLiquidity ?? 0 : a.quotes?.lay.amount ?? 0;
+  const marketUrl = isQov
+    ? liveForSelected?.qovMexchangeUrl ??
+      selected.qovMexchangeUrl ??
+      selected.mexchangeUrl
+    : isEr
+      ? liveForSelected?.eventosRarosMexchangeUrl ??
+        selected.eventosRarosMexchangeUrl ??
+        selected.mexchangeUrl
+      : selected.mexchangeUrl;
+  const backOdds = isQov
+    ? qov?.backOdds ?? null
+    : isEr
+      ? er?.backOdds ?? null
+      : a.quotes?.back.odds;
+  const layOdds = isQov
+    ? qov?.layOdds ?? null
+    : isEr
+      ? er?.layOdds ?? null
+      : a.quotes?.lay.odds;
+  const backAmount = isInd ? 0 : a.quotes?.back.amount ?? 0;
+  const layAmount = isQov
+    ? qov?.liquidity ?? 0
+    : isEr
+      ? er?.liquidity ?? 0
+      : a.quotes?.lay.amount ?? 0;
 
   return (
     <div className="event-detail">
@@ -1706,7 +1920,9 @@ function EventDetail({
           ) : (
             <p className="event-kick">Início {formatKickoff(a.start)}</p>
           )}
-          <p className="event-summary">{a.summary}</p>
+          <p className="event-summary">
+            {isEr ? er?.summary ?? a.summary : a.summary}
+          </p>
         </div>
         <div className="event-hero-actions">
           <OddsQuoteButtons
@@ -1724,74 +1940,90 @@ function EventDetail({
             </a>
           ) : null}
           <span
-            className={`status-chip status-${(isOverLimite
-              ? overStatus
-              : tradeStatus(activeTrade)
+            className={`status-chip status-${(
+              indStatus ?? tradeStatus(activeTrade)
             ).toLowerCase()}`}
           >
-            {isOverLimite ? overStatus : tradeStatus(activeTrade)}
+            {indStatus ?? tradeStatus(activeTrade)}
           </span>
         </div>
       </div>
 
       <div className="metric-strip">
         <div>
-          <span>{isOverLimite ? "Lay Over" : "Lay"}</span>
+          <span>{isQov ? "Lay QOV" : isEr ? "Lay CS" : "Lay"}</span>
           <strong>
-            {isOverLimite
-              ? over?.layOdds?.toFixed(2) ?? "—"
-              : activeTrade?.layOdds?.toFixed(0) ?? a.layOdds?.toFixed(0) ?? "—"}
+            {isQov
+              ? qov?.entryOdds?.toFixed(2) ?? "—"
+              : isEr
+                ? er?.layOdds?.toFixed(0) ?? "—"
+                : activeTrade?.layOdds?.toFixed(0) ?? a.layOdds?.toFixed(0) ?? "—"}
           </strong>
         </div>
         <div>
-          <span>{isOverLimite ? "Back alvo" : "Alvo back"}</span>
+          <span>{isEr ? "Placares" : isQov ? "Back alvo" : "Alvo back"}</span>
           <strong>
-            {isOverLimite
-              ? over?.exitPlan?.targetBackOdds.toFixed(2) ?? "—"
-              : activeTrade?.targetBackOdds?.toFixed(0) ?? "—"}
+            {isEr
+              ? er?.scoreLabels?.length
+                ? er.scoreLabels.length > 2
+                  ? `${er.scoreLabels.slice(0, 2).join(", ")} +${er.scoreLabels.length - 2}`
+                  : er.scoreLabels.join(", ")
+                : er?.scoreLabel ?? "—"
+              : isQov
+                ? qov?.exitPlan?.exitOdds.toFixed(2) ?? "—"
+                : activeTrade?.targetBackOdds?.toFixed(0) ?? "—"}
           </strong>
         </div>
         <div>
-          <span>{isOverLimite ? "Liquidez lay" : "Score"}</span>
+          <span>{isInd ? "Liquidez" : "Score"}</span>
           <strong>
-            {isOverLimite ? `R$ ${over?.layLiquidity.toFixed(0) ?? "—"}` : a.score}
+            {isQov
+              ? `R$ ${qov?.liquidity.toFixed(0) ?? "—"}`
+              : isEr
+                ? `R$ ${er?.liquidity.toFixed(0) ?? "—"}`
+                : a.score}
           </strong>
         </div>
         <div>
-          <span>{isOverLimite ? "Indicadores" : "BTTS / Over"}</span>
+          <span>{isInd ? "Indicadores" : "BTTS / Over"}</span>
           <strong>
-            {isOverLimite
-              ? `${over?.goodCount ?? 0}/${over?.indicators.length ?? 0}`
-              : `${a.bttsYes?.toFixed(2) ?? "—"} / ${a.over25?.toFixed(2) ?? "—"}`}
+            {isQov
+              ? `${qov?.goodCount ?? 0}/${qov?.indicators.length ?? 0}`
+              : isEr
+                ? `${er?.goodCount ?? 0}/${er?.indicators.length ?? 0}`
+                : `${a.bttsYes?.toFixed(2) ?? "—"} / ${a.over25?.toFixed(2) ?? "—"}`}
           </strong>
         </div>
       </div>
 
       <div className="detail-stack">
         <CollapsePanel
-          title={isOverLimite ? `Plano · Lay Over ${over?.line ?? overLineForStrategy(strategy)}` : "Plano de trade"}
+          title={isInd ? marketLabel : "Plano de trade"}
           subtitle={
-            isOverLimite
-              ? over?.summary ?? "Aguardando leitura do mercado Over"
-              : activeTrade?.summary ?? "Lay 3-3 e saída no back"
+            isQov
+              ? qov?.summary ?? "QOV live · saída ~1%"
+              : isEr
+                ? er?.summary ?? "CS lay ≥ 100 · hold até settle"
+                : activeTrade?.summary ?? "Lay 3-3 e saída no back"
           }
           open={detailOpen.trade}
           onToggle={() => onToggle("trade")}
           badge={
             <span className="tag tag-watch">
-              {isOverLimite ? overStatus : tradeStatus(activeTrade)}
+              {indStatus ?? tradeStatus(activeTrade)}
             </span>
           }
         >
-          {isOverLimite ? (
+          {isQov ? (
             <div className="signals">
-              {over?.exitPlan && (
-                <p className="trade-oscillation">
-                  Saída estimada: {over.exitPlan.summary} · confiança {over.exitPlan.confidence}
-                </p>
+              {qov?.exitPlan && (
+                <p className="trade-oscillation">Saída: {qov.exitPlan.summary}</p>
               )}
-              {(over?.indicators ?? []).map((indicator) => (
-                <article key={indicator.id} className={`signal level-${indicator.tone}`}>
+              {(qov?.indicators ?? []).map((indicator) => (
+                <article
+                  key={indicator.id}
+                  className={`signal level-${indicator.tone}`}
+                >
                   <header>
                     <strong>
                       {indicator.icon} {indicator.label}
@@ -1801,7 +2033,109 @@ function EventDetail({
                   <p>{indicator.detail}</p>
                 </article>
               ))}
-              {!over && <p className="empty">Mercado Over indisponível no momento.</p>}
+              {(qov?.blockers ?? [])
+                .filter((b) => !/liquidez|momento|pressão/i.test(b))
+                .map((b) => (
+                  <article key={b} className="signal level-warn">
+                    <header>
+                      <strong>Filtro</strong>
+                      <span>—</span>
+                    </header>
+                    <p>{b}</p>
+                  </article>
+                ))}
+              {qov?.entryReady && (
+                <p className="trade-oscillation">Setup pronto para entrada live.</p>
+              )}
+              {!qov && <p className="empty">QOV indisponível neste evento.</p>}
+            </div>
+          ) : isEr ? (
+            <div className="signals">
+              <p className="trade-oscillation">
+                Saída: Hold até settle
+                {er?.entries && er.entries.length > 1
+                  ? ` · ${er.entries.length} lays no mesmo CS (mesmo saldo)`
+                  : ""}
+              </p>
+              {(er?.entries ?? []).map((e) => (
+                <article key={`entry-${e.label}`} className="signal level-good">
+                  <header>
+                    <strong>ENTRAR · {e.label}</strong>
+                    <span>lay {e.layOdds.toFixed(0)}</span>
+                  </header>
+                  <p>
+                    +{e.goalsNeeded} gols · {e.remainingMinutes.toFixed(0)}&apos;
+                    {e.modelProb != null
+                      ? ` · P ${(e.modelProb * 100).toFixed(2)}%`
+                      : ""}
+                    {" · hold"}
+                  </p>
+                </article>
+              ))}
+              {er?.best && !(er.entries?.length) && (
+                <p className="trade-oscillation">
+                  Alvo {er.best.label} · +{er.best.goalsNeeded} gols · ~
+                  {er.best.remainingMinutes.toFixed(0)}&apos; · P implícita{" "}
+                  {(er.best.impliedProb * 100).toFixed(2)}%
+                  {er.best.modelProb != null
+                    ? ` · P modelo ${(er.best.modelProb * 100).toFixed(2)}%`
+                    : ""}
+                </p>
+              )}
+              {(er?.indicators ?? []).map((indicator) => (
+                <article
+                  key={indicator.id}
+                  className={`signal level-${indicator.tone}`}
+                >
+                  <header>
+                    <strong>
+                      {indicator.icon} {indicator.label}
+                    </strong>
+                    <span>{indicator.good ? "OK" : "—"}</span>
+                  </header>
+                  <p>{indicator.detail}</p>
+                </article>
+              ))}
+              {(er?.candidates ?? [])
+                .filter((c) => c.stillPossible && !c.entryReady)
+                .slice(0, 5)
+                .map((c) => (
+                  <article
+                    key={c.label}
+                    className={`signal level-${c.timeBlocked ? "good" : "warn"}`}
+                  >
+                    <header>
+                      <strong>{c.label}</strong>
+                      <span>lay {c.layOdds.toFixed(0)}</span>
+                    </header>
+                    <p>
+                      +{c.goalsNeeded} gols · {c.remainingMinutes.toFixed(0)}&apos;
+                      {c.timeBlocked ? " · tempo bloqueia" : " · watch"}
+                      {c.modelProb != null
+                        ? ` · P ${(c.modelProb * 100).toFixed(2)}%`
+                        : ""}
+                    </p>
+                  </article>
+                ))}
+              {(er?.blockers ?? [])
+                .filter((b) => !/liquidez|janela|tempo|modelo/i.test(b))
+                .map((b) => (
+                  <article key={b} className="signal level-warn">
+                    <header>
+                      <strong>Filtro</strong>
+                      <span>—</span>
+                    </header>
+                    <p>{b}</p>
+                  </article>
+                ))}
+              {er?.entryReady && (
+                <p className="trade-oscillation">
+                  Setup pronto · multi-lay CS permitido · hold até settle.
+                </p>
+              )}
+              {!er && (
+                <p className="empty">Eventos raros indisponível neste evento.</p>
+              )}
             </div>
           ) : (
             <>
@@ -1849,7 +2183,7 @@ function EventDetail({
         </CollapsePanel>
 
         <CollapsePanel
-          title={isOverLimite ? "Leitura ao vivo" : "Confirmação live"}
+          title="Confirmação live"
           subtitle={
             liveForSelected?.live
               ? `${liveForSelected.live.scoreLabel} · ${liveForSelected.live.minute ?? "?"}′`
@@ -1874,7 +2208,7 @@ function EventDetail({
                   <span className="tag">monitorando</span>
                 )}
               </p>
-              {!isOverLimite && liveForSelected.reasons?.length ? (
+              {liveForSelected.reasons?.length ? (
                 <ul>
                   {liveForSelected.reasons.map((r) => (
                     <li key={r}>{r}</li>
@@ -1887,16 +2221,14 @@ function EventDetail({
           )}
         </CollapsePanel>
 
-        {!isOverLimite && (
-          <CollapsePanel
-            title="Análise de momento"
-            subtitle="Pré × live × fluidez × correção"
-            open={detailOpen.moment}
-            onToggle={() => onToggle("moment")}
-          >
-            <MomentAnalysisCard eventId={a.eventId} />
-          </CollapsePanel>
-        )}
+        <CollapsePanel
+          title="Análise de momento"
+          subtitle="Pré × live × fluidez × correção"
+          open={detailOpen.moment}
+          onToggle={() => onToggle("moment")}
+        >
+          <MomentAnalysisCard eventId={a.eventId} />
+        </CollapsePanel>
 
         <CollapsePanel
           title="xG & pressão"
@@ -1907,26 +2239,24 @@ function EventDetail({
           <MatchIntelCard home={a.home} away={a.away} start={a.start} />
         </CollapsePanel>
 
-        {!isOverLimite && (
-          <CollapsePanel
-            title="Sinais pré-live"
-            subtitle={`Score ${a.score}/100`}
-            open={detailOpen.signals}
-            onToggle={() => onToggle("signals")}
-          >
-            <div className="signals">
-              {a.signals.map((s) => (
-                <article key={s.id} className={`signal level-${s.level}`}>
-                  <header>
-                    <strong>{s.label}</strong>
-                    <span>{s.score}</span>
-                  </header>
-                  <p>{s.detail}</p>
-                </article>
-              ))}
-            </div>
-          </CollapsePanel>
-        )}
+        <CollapsePanel
+          title="Sinais pré-live"
+          subtitle={`Score ${a.score}/100`}
+          open={detailOpen.signals}
+          onToggle={() => onToggle("signals")}
+        >
+          <div className="signals">
+            {a.signals.map((s) => (
+              <article key={s.id} className={`signal level-${s.level}`}>
+                <header>
+                  <strong>{s.label}</strong>
+                  <span>{s.score}</span>
+                </header>
+                <p>{s.detail}</p>
+              </article>
+            ))}
+          </div>
+        </CollapsePanel>
 
         <CollapsePanel
           title="Gráfico odd & volume"
@@ -1935,13 +2265,13 @@ function EventDetail({
           onToggle={() => onToggle("chart")}
         >
           <OddsVolumeChart
-            runnerId={isOverLimite ? over?.runnerId : a.runnerId}
-            marketId={isOverLimite ? over?.marketId : a.marketId}
+            runnerId={isQov ? qov?.runnerId : a.runnerId}
+            marketId={isQov ? qov?.marketId : a.marketId}
             eventId={a.eventId}
-            layOddsHint={isOverLimite ? over?.layOdds : a.layOdds}
+            layOddsHint={isQov ? qov?.layOdds : a.layOdds}
             title={
-              isOverLimite
-                ? `Odd Over ${over?.line ?? overLineForStrategy(strategy)} · ${a.home} vs ${a.away}`
+              isQov
+                ? `${marketLabel} · ${a.home} vs ${a.away}`
                 : `Odd 3-3 · ${a.home} vs ${a.away}`
             }
           />

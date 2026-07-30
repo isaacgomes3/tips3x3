@@ -148,6 +148,118 @@ let inplayCache: { at: number; data: InplayEvent[] } | null = null;
 const INPLAY_CACHE_TTL_MS = 8_000;
 let inplayInflight: Promise<InplayEvent[]> | null = null;
 
+function splitEventNames(name: string): [string, string] {
+  const parts = name.split(/\s+vs\.?\s+/i);
+  if (parts.length >= 2) {
+    return [parts[0]!.trim(), parts.slice(1).join(" vs ").trim()];
+  }
+  return [name.trim(), ""];
+}
+
+function estimateElapsedMinute(startIso?: string): number | null {
+  if (!startIso) return null;
+  const start = Date.parse(startIso);
+  if (!Number.isFinite(start)) return null;
+  const elapsed = Math.floor((Date.now() - start) / 60_000);
+  if (elapsed < 0 || elapsed > 130) return null;
+  return elapsed;
+}
+
+/** Monta InplayEvent mínimo a partir do evento mexchange (quando o feed de placar falha). */
+export function eventToSyntheticInplay(ev: BetBraEvent): InplayEvent {
+  const participants = ev["event-participants"] ?? [];
+  const homeP =
+    participants.find((p) => Number(p.number) === 1) ?? participants[0];
+  const awayP =
+    participants.find((p) => Number(p.number) === 2) ?? participants[1];
+  const [homeFallback, awayFallback] = splitEventNames(ev.name);
+  const minute = estimateElapsedMinute(ev.start);
+  const minuteStr = minute != null ? String(minute) : undefined;
+
+  return {
+    eventId: ev.id,
+    score: {
+      home: {
+        name:
+          homeP?.["participant-name"] ??
+          homeP?.name ??
+          homeFallback ??
+          "Casa",
+      },
+      away: {
+        name:
+          awayP?.["participant-name"] ??
+          awayP?.name ??
+          awayFallback ??
+          "Fora",
+      },
+    },
+    timeElapsed: minuteStr,
+    elapsedRegularTime: minuteStr,
+    status: "In Play",
+    inPlayMatchStatus: "InPlay",
+  };
+}
+
+async function fetchInplayFeedRaw(): Promise<InplayEvent[]> {
+  try {
+    const data = await getJson<InplayEvent[]>(
+      `${BETBRA.clientApi}/jumper/feedSports/inplay-info`,
+      clientHeaders(),
+    );
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Fallback: eventos soccer com in-running-flag no mexchange (+ placar FotMob se houver). */
+async function listInRunningAsInplay(): Promise<InplayEvent[]> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const res = await listSoccerEvents({
+    after: nowSec - 6 * 3600,
+    before: nowSec + 90 * 60,
+    perPage: 50,
+  });
+  const base = (res.events ?? [])
+    .filter((e) => Boolean(e["in-running-flag"]))
+    .map(eventToSyntheticInplay);
+
+  if (!base.length) return base;
+
+  // Hidrata placar via FotMob (feed inplay-info da Bolsa está vazio).
+  const { getFotmobMatchIntel } = await import("@/lib/fotmob/intel");
+  const enriched = await Promise.all(
+    base.map(async (ip) => {
+      const home = ip.score?.home?.name;
+      const away = ip.score?.away?.name;
+      if (!home || !away) return ip;
+      const ev = (res.events ?? []).find((e) => e.id === ip.eventId);
+      const intel = await getFotmobMatchIntel({
+        home,
+        away,
+        start: ev?.start,
+      }).catch(() => null);
+      if (!intel?.scoreLabel) return ip;
+      const m = intel.scoreLabel.replace(/\s+/g, "").match(/^(\d+)[-–:](\d+)$/);
+      if (!m) return ip;
+      const minuteFromStatus =
+        intel.status?.match(/(\d+)/)?.[1] ?? ip.timeElapsed;
+      return {
+        ...ip,
+        score: {
+          home: { ...ip.score?.home, name: home, score: m[1] },
+          away: { ...ip.score?.away, name: away, score: m[2] },
+        },
+        timeElapsed: minuteFromStatus,
+        elapsedRegularTime: minuteFromStatus,
+        status: intel.status ?? ip.status,
+      };
+    }),
+  );
+  return enriched;
+}
+
 export async function getInplayInfo(): Promise<InplayEvent[]> {
   const now = Date.now();
   if (inplayCache && now - inplayCache.at < INPLAY_CACHE_TTL_MS) {
@@ -155,17 +267,17 @@ export async function getInplayInfo(): Promise<InplayEvent[]> {
   }
   if (inplayInflight) return inplayInflight;
 
-  inplayInflight = getJson<InplayEvent[]>(
-    `${BETBRA.clientApi}/jumper/feedSports/inplay-info`,
-    clientHeaders(),
-  )
-    .then((data) => {
-      inplayCache = { at: Date.now(), data };
-      return data;
-    })
-    .finally(() => {
-      inplayInflight = null;
-    });
+  inplayInflight = (async () => {
+    let data = await fetchInplayFeedRaw();
+    // BetBra tem devolvido [] no inplay-info mesmo com jogos ao vivo no exchange.
+    if (!data.length) {
+      data = await listInRunningAsInplay().catch(() => []);
+    }
+    inplayCache = { at: Date.now(), data };
+    return data;
+  })().finally(() => {
+    inplayInflight = null;
+  });
 
   return inplayInflight;
 }
