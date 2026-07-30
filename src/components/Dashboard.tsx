@@ -23,7 +23,6 @@ import {
   getTargetProfitPctPoints,
   setTargetProfitPctPoints,
 } from "@/lib/panel-settings";
-import { mexchangeEventUrl } from "@/lib/betbra/client";
 import {
   BarChart3,
   Grid3x3,
@@ -33,6 +32,15 @@ import {
   Target,
   Sparkles,
 } from "lucide-react";
+
+const MEXCHANGE_WEB = "https://betbra.bet.br/b";
+
+function mexchangeEventUrl(eventId: string, marketId?: string) {
+  if (marketId) {
+    return `${MEXCHANGE_WEB}/exchange/sport/soccer/event/${eventId}/market/${marketId}`;
+  }
+  return `${MEXCHANGE_WEB}/exchange/sport/soccer/event/${eventId}`;
+}
 
 type OverIndicatorTone = "good" | "warn" | "bad" | "idle";
 type OverLimiteSnapshot = {
