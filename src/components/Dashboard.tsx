@@ -542,7 +542,7 @@ export function Dashboard() {
   const [query, setQuery] = useState("");
   const [tick, setTick] = useState(0);
   const [view, setView] = useState<NavView>("dashboard");
-  const [strategy, setStrategy] = useState<StrategyId>("lay-3x3");
+  const [strategy, setStrategy] = useState<StrategyId>("eventos-raros");
   const [statsTarget, setStatsTarget] = useState<StatsTarget | null>(null);
   const [topNavOpen, setTopNavOpen] = useState(false);
   const [targetProfitPct, setTargetProfitPct] = useState(1);
@@ -1605,7 +1605,7 @@ function GameRow({
   row,
   liveRow,
   enrichedLive,
-  strategy = "lay-3x3",
+  strategy = "eventos-raros",
   active,
   favorited,
   onToggleFavorite,
