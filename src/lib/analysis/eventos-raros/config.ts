@@ -13,7 +13,6 @@ export const EVENTOS_RAROS = {
   /** Minuto de referência para tempo restante (90 + acréscimos). */
   fullTimeMinute: 95,
   minLayLiquidity: 5,
-  maxGapTicks: 4,
   /** Tempo crítico (gate B): gols extras vs minutos restantes. */
   time: {
     minGoalsNeeded: 2,

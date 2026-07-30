@@ -118,17 +118,11 @@ function rarityScore(c: {
 function bookOk(c: {
   layOdds: number;
   liquidity: number;
-  gapTicks: number | null;
 }): boolean {
   if (!(c.layOdds >= EVENTOS_RAROS.minLayOdds)) return false;
   if (c.layOdds > EVENTOS_RAROS.oddsBand.max) return false;
   if (c.liquidity < EVENTOS_RAROS.minLayLiquidity) return false;
-  if (
-    c.gapTicks != null &&
-    c.gapTicks > EVENTOS_RAROS.maxGapTicks
-  ) {
-    return false;
-  }
+  // Gap back/lay não filtra: em CS raro o spread é sempre largo.
   return true;
 }
 
