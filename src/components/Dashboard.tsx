@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ActiveAlertsPanel, type ActiveAlertItem } from "@/components/ActiveAlertsPanel";
 import { CollapsePanel } from "@/components/CollapsePanel";
 import { FavoriteStarButton } from "@/components/FavoriteStarButton";
 import { MatchIntelCard } from "@/components/MatchIntelCard";
@@ -22,6 +23,7 @@ import {
   getTargetProfitPctPoints,
   setTargetProfitPctPoints,
 } from "@/lib/panel-settings";
+import { mexchangeEventUrl } from "@/lib/betbra/client";
 import {
   BarChart3,
   Grid3x3,
@@ -529,6 +531,65 @@ function tradeStatus(plan?: TradePlan | null) {
   return "FORA";
 }
 
+function isPanelActiveAlert(alert: {
+  severity: LivePayload["alerts"][number]["severity"];
+  title: string;
+}) {
+  if (alert.severity === "entry" || alert.severity === "abort") return true;
+  if (alert.severity !== "watch") return false;
+  const title = alert.title.toLowerCase();
+  return !title.includes("monitorar") && !title.includes("live ativo");
+}
+
+function alertBadgeLabel(
+  alert: LivePayload["alerts"][number],
+  row?: LivePayload["rows"][number],
+) {
+  const title = alert.title.toUpperCase();
+  if (title.includes("QOV") || title.includes("ZEBRA")) return "ZEBRA ↓";
+  if (title.includes("EVENTOS RAROS") || title.includes("RAROS")) return "RARO";
+  if (title.includes("ENTRADA") || title.includes("LAY 3-3") || title.includes("CORREÇÃO")) {
+    return "ENTRAR";
+  }
+  if (title.includes("FORA DO ROTEIRO") || title.includes("EXCLUÍDO")) return "FORA";
+  if (row?.qovLayUnderdog?.entryReady) return "ZEBRA ↓";
+  if (row?.eventosRaros?.entryReady) return "RARO";
+  if (row?.tradePlan) {
+    const status = tradeStatus(row.tradePlan);
+    if (status === "ZEBRA↓") return "ZEBRA ↓";
+    return status;
+  }
+  const short = alert.title.split("·")[0]?.trim() || alert.title;
+  return short.slice(0, 14).toUpperCase();
+}
+
+function resolveAlertLink(
+  alert: LivePayload["alerts"][number],
+  row?: LivePayload["rows"][number],
+) {
+  const id = alert.id.toLowerCase();
+  const fallback = alert.eventId
+    ? mexchangeEventUrl(alert.eventId, row?.analysis.marketId)
+    : "";
+  if (id.includes("qov")) {
+    return (
+      row?.qovMexchangeUrl ??
+      alert.mexchangeUrl ??
+      row?.mexchangeUrl ??
+      fallback
+    );
+  }
+  if (id.includes("eventos-raros") || id.includes("raros")) {
+    return (
+      row?.eventosRarosMexchangeUrl ??
+      alert.mexchangeUrl ??
+      row?.mexchangeUrl ??
+      fallback
+    );
+  }
+  return alert.mexchangeUrl ?? row?.mexchangeUrl ?? fallback;
+}
+
 export function Dashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -883,6 +944,54 @@ export function Dashboard() {
   const activeTrade = liveForSelected?.tradePlan ?? selected?.analysis.tradePlan;
   const entryAlerts = (live?.alerts ?? []).filter((a) => a.severity === "entry").length;
 
+  const activeAlertItems = useMemo<ActiveAlertItem[]>(() => {
+    const severityRank: Record<ActiveAlertItem["severity"], number> = {
+      entry: 0,
+      abort: 1,
+      watch: 2,
+      info: 3,
+    };
+    const rowsById = new Map(
+      (live?.rows ?? []).map((row) => [row.analysis.eventId, row]),
+    );
+
+    return (live?.alerts ?? [])
+      .filter(isPanelActiveAlert)
+      .filter((alert): alert is typeof alert & { eventId: string } =>
+        Boolean(alert.eventId),
+      )
+      .map((alert) => {
+        const row = rowsById.get(alert.eventId);
+        const home = row?.analysis.home;
+        const away = row?.analysis.away;
+        const eventName =
+          alert.eventName ?? row?.analysis.eventName ?? "Evento ao vivo";
+        const subtitle =
+          home && away ? `${home} vs ${away}` : alert.message || eventName;
+        const href = resolveAlertLink(alert, row);
+        return {
+          id: alert.id,
+          severity: alert.severity,
+          badge: alertBadgeLabel(alert, row),
+          eventId: alert.eventId,
+          eventName,
+          subtitle,
+          scoreLabel: row?.live?.scoreLabel,
+          minute: row?.live?.minute,
+          status: row?.live?.status,
+          href,
+        } satisfies ActiveAlertItem;
+      })
+      .sort((a, b) => {
+        const bySeverity =
+          severityRank[a.severity] - severityRank[b.severity];
+        if (bySeverity !== 0) return bySeverity;
+        const aMin = Number.isFinite(Number(a.minute)) ? Number(a.minute) : -1;
+        const bMin = Number.isFinite(Number(b.minute)) ? Number(b.minute) : -1;
+        return bMin - aMin;
+      });
+  }, [live]);
+
   const lastSyncSec =
     lastSyncAt == null
       ? 0
@@ -1200,6 +1309,11 @@ export function Dashboard() {
                 />
               </label>
             </div>
+
+            <ActiveAlertsPanel
+              items={activeAlertItems}
+              onOpenEvent={openEvent}
+            />
 
             {!strategyFilterReady(strategy) ? (
               <div className="empty-state panel-block">
