@@ -31,8 +31,8 @@ export const EVENTOS_RAROS = {
    */
   maxEntriesPerEvent: 8,
   /**
-   * Placar já impossível (ex.: live 4-2 → lay 3-2): entrada imediata,
-   * sem janela late / gate de tempo.
+   * Placar já impossível (ex.: live 1-1 → lay 0-2): entrada imediata.
+   * Sem risco de settle — sem filtros de book/late/modelo (só odd lay ≥ minLayOdds).
    */
   alreadyImpossible: {
     enabled: true,

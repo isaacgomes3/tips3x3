@@ -134,8 +134,8 @@ function bookOk(c: {
 
 /**
  * Gate por placar.
- * - alreadyImpossible: entrada imediata (só book + live)
- * - stillPossible: precisa late + time-gate B (+ modelo se disponível)
+ * - alreadyImpossible: imediato — só live + lay ≥ min (sem liq/gap/late/modelo)
+ * - stillPossible: late + time-gate B (+ modelo se disponível) + bookOk
  */
 function candidateEntryReady(
   c: Omit<EventosRarosCandidate, "entryReady">,
@@ -143,11 +143,16 @@ function candidateEntryReady(
   eventLateOk: boolean,
 ): boolean {
   if (c.settledHit) return false;
-  if (!bookOk(c)) return false;
 
   if (c.alreadyImpossible && EVENTOS_RAROS.alreadyImpossible.enabled) {
-    return eventLiveOk;
+    return (
+      eventLiveOk &&
+      c.layOdds >= EVENTOS_RAROS.minLayOdds &&
+      c.layOdds <= EVENTOS_RAROS.oddsBand.max
+    );
   }
+
+  if (!bookOk(c)) return false;
 
   if (!eventLateOk) return false;
   if (!c.stillPossible) return false;
@@ -166,8 +171,20 @@ function candidateEntryReady(
 
 function buildLiquidityIndicator(
   liquidity: number,
+  opts?: { alreadyImpossible?: boolean },
 ): EventosRarosIndicator {
   const m = EVENTOS_RAROS_INDICATOR_META.liquidity;
+  if (opts?.alreadyImpossible) {
+    return {
+      id: "liquidity",
+      label: m.label,
+      icon: m.icon,
+      tone: "good",
+      good: true,
+      detail: `Sem filtro · impossível · book R$ ${liquidity.toFixed(0)}`,
+      value: liquidity,
+    };
+  }
   const min = EVENTOS_RAROS.minLayLiquidity;
   const good = liquidity >= min;
   const warn = liquidity >= min * 0.5;
@@ -541,6 +558,11 @@ export function buildEventosRarosSnapshot(opts: {
   const lateInd = buildLateWindowIndicator(minute, hasImpossibleEntry);
   const liqInd = buildLiquidityIndicator(
     bestReady?.liquidity ?? best?.liquidity ?? 0,
+    {
+      alreadyImpossible:
+        hasImpossibleEntry ||
+        Boolean(bestReady?.alreadyImpossible || best?.alreadyImpossible),
+    },
   );
   const timeInd = buildTimeImpossibilityIndicator(best, entries.length);
   const edgeInd = buildModelEdgeIndicator(bestReady ?? best);
