@@ -4,7 +4,14 @@
  *
  * Caminho robusto: também publica em POST /api/ext/signal (fila 1-sinal)
  * para a extensão pollear com cookie de sessão — painel fechado / mobile ok.
+ *
+ * No WebView puro, postMessage local não chega a content script. A fila HTTP
+ * (/api/ext/signal) serve o executor Bolsa Manual. Se o painel Auto Lay /
+ * Bolsa Exchange já estiver CONECTADO no aparelho, ele mesmo chama a BetBra
+ * (/api/offers) — e pode falhar com INSUFFICIENT_FUNDS (liability > saldo).
  */
+import { isNativeApp } from "@/lib/native-alerts";
+
 export type Tips3x3AutoEntryPayload = {
   eventId: string;
   eventName?: string;
@@ -18,6 +25,12 @@ export type Tips3x3AutoEntryPayload = {
   exitMode?: "hold" | "green";
   /** Chave de dedupe do painel (ex.: eventId:over-2-5) */
   dedupeKey?: string;
+};
+
+export type ExtAutoEntryResult = {
+  ok: boolean;
+  queued: boolean;
+  postMessage: boolean;
 };
 
 const STORAGE_KEY = "tips3x3-ext-auto-send";
@@ -85,43 +98,39 @@ export function qovSelectionLabel(side: "home" | "away"): string {
   return side === "home" ? "QOV Casa" : "QOV Fora";
 }
 
-/** Publica na fila server-side (extensão faz poll). Fire-and-forget. */
-export function publishExtSignalApi(
+/** Publica na fila server-side (extensão no PC faz poll). */
+export async function publishExtSignalApi(
   payload: Tips3x3AutoEntryPayload & { dedupeKey?: string },
-): void {
-  if (typeof window === "undefined") return;
-  if (!payload?.eventId || !(Number(payload.layOdds) > 1.01)) return;
-  const at = Date.now();
-  const score = payload.score || "3-3";
-  void fetch("/api/ext/signal", {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      eventId: String(payload.eventId),
-      eventName: payload.eventName || "",
-      score,
-      layOdds: Number(payload.layOdds),
-      marketId: payload.marketId || "",
-      runnerId: payload.runnerId || "",
-      mexchangeUrl: payload.mexchangeUrl || "",
-      exitMode: payload.exitMode || "",
-      at,
-      dedupeKey: payload.dedupeKey || `${payload.eventId}:${score}`,
-    }),
-  }).catch(() => {
-    /* rede / 401 — bridge postMessage ainda pode salvar */
-  });
-}
-
-/** Dispara auto-LAY na extensão (odd do painel; saída Back fica com a extensão). */
-export function dispatchExtAutoEntry(payload: Tips3x3AutoEntryPayload): boolean {
+): Promise<boolean> {
   if (typeof window === "undefined") return false;
   if (!payload?.eventId || !(Number(payload.layOdds) > 1.01)) return false;
+  const at = Date.now();
+  const score = payload.score || "3-3";
+  try {
+    const res = await fetch("/api/ext/signal", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventId: String(payload.eventId),
+        eventName: payload.eventName || "",
+        score,
+        layOdds: Number(payload.layOdds),
+        marketId: payload.marketId || "",
+        runnerId: payload.runnerId || "",
+        mexchangeUrl: payload.mexchangeUrl || "",
+        exitMode: payload.exitMode || "",
+        at,
+        dedupeKey: payload.dedupeKey || `${payload.eventId}:${score}`,
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
-  // Fila API: funciona com painel fechado / outro device com extensão logada.
-  publishExtSignalApi(payload);
-
+function postAutoEntryMessage(payload: Tips3x3AutoEntryPayload): boolean {
   try {
     window.postMessage(
       {
@@ -145,6 +154,30 @@ export function dispatchExtAutoEntry(payload: Tips3x3AutoEntryPayload): boolean 
   } catch {
     return false;
   }
+}
+
+/**
+ * Dispara auto-LAY na extensão (odd do painel; saída Back fica com a extensão).
+ * No APK: só considera sucesso se a fila HTTP aceitou o sinal (sem extensão local).
+ */
+export async function dispatchExtAutoEntry(
+  payload: Tips3x3AutoEntryPayload,
+): Promise<ExtAutoEntryResult> {
+  if (typeof window === "undefined") {
+    return { ok: false, queued: false, postMessage: false };
+  }
+  if (!payload?.eventId || !(Number(payload.layOdds) > 1.01)) {
+    return { ok: false, queued: false, postMessage: false };
+  }
+
+  const queued = await publishExtSignalApi(payload);
+  const posted = postAutoEntryMessage(payload);
+  const native = isNativeApp();
+
+  // APK/WebView: postMessage não chega a nenhuma extensão — exige fila.
+  // Desktop Chrome: postMessage local OU fila HTTP bastam.
+  const ok = native ? queued : posted || queued;
+  return { ok, queued, postMessage: posted };
 }
 
 /**

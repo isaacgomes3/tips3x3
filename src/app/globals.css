@@ -2062,6 +2062,16 @@ a {
   line-height: 1.4;
 }
 
+.alertas-ext-hint--warn {
+  color: #f0c674;
+  border: 1px solid rgba(240, 198, 116, 0.35);
+  background: rgba(240, 198, 116, 0.08);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  margin: 0 0 0.75rem;
+  line-height: 1.4;
+}
+
 .alertas-ext-hint {
   margin: 0.55rem 0 0;
   font-size: 0.72rem;
