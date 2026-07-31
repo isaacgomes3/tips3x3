@@ -12,8 +12,10 @@ export type ExtSignalPayload = {
   marketId?: string;
   runnerId?: string;
   mexchangeUrl?: string;
-  /** hold = sem green (Eventos raros). */
+  /** hold = sem green (Eventos raros); green = Lay+Back (3x3). */
   exitMode?: "hold" | "green" | "";
+  targetBackOdds?: number | null;
+  targetProfitPct?: number | null;
   at: number;
   dedupeKey: string;
 };

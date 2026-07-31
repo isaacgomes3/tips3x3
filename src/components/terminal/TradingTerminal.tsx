@@ -348,18 +348,39 @@ function buildTimeline(entries: Entry[]) {
   return items;
 }
 
+export type ExchangeSnapshot = {
+  connected: boolean;
+  balance: number | null;
+  balanceError?: string | null;
+  openOffers: number;
+  offersSummary: string;
+  lastLay: null | {
+    at: number;
+    ok: boolean;
+    message: string;
+    eventId?: string;
+    score?: string;
+  };
+  busy?: boolean;
+  onConnect?: () => void;
+  onRefresh?: () => void;
+};
+
 export function TradingTerminal({
   bankroll,
   liveRows,
   signalStats,
   lastSyncSec,
   onOpenEvent,
+  exchange,
 }: {
   bankroll: Bankroll;
   liveRows: LiveRow[];
   signalStats: SignalStats;
   lastSyncSec: number;
   onOpenEvent?: (eventId: string) => void;
+  /** Saldo/ofertas reais da BetBra Exchange (APK). Não confundir com banca gestão. */
+  exchange?: ExchangeSnapshot | null;
 }) {
   const {
     currentBankroll,
@@ -410,28 +431,134 @@ export function TradingTerminal({
   const riskLabel = { baixo: "Baixo", moderado: "Moderado", alto: "Alto" }[riskTier];
   const riskClass = `term-risk-${riskTier}`;
 
-  const lay3x3AllocPct = (committed.lay3x3 / Math.max(currentBankroll, 1)) * 100;
-  const overAllocPct = (committed.over / Math.max(currentBankroll, 1)) * 100;
-  const availPct = (committed.available / Math.max(currentBankroll, 1)) * 100;
+  /** No APK com BetBra conectada, a banca do resumo = saldo real da Exchange. */
+  const usingExchangeBankroll =
+    exchange != null &&
+    exchange.connected &&
+    typeof exchange.balance === "number" &&
+    Number.isFinite(exchange.balance);
+
+  const displayBankroll = usingExchangeBankroll
+    ? (exchange!.balance as number)
+    : currentBankroll;
+
+  const displayCommitted = useMemo(() => {
+    if (!usingExchangeBankroll) return committed;
+    const lay3x3 = displayBankroll * (lay3x3StakePct / 100);
+    const over = displayBankroll * (overStakePct / 100);
+    const pendingStake = committed.pendingStake;
+    const allocated = lay3x3 + over + pendingStake;
+    const available = Math.max(0, displayBankroll - allocated);
+    return { lay3x3, over, pendingStake, allocated, available };
+  }, [
+    usingExchangeBankroll,
+    displayBankroll,
+    lay3x3StakePct,
+    overStakePct,
+    committed,
+  ]);
+
+  const lay3x3AllocPct =
+    (displayCommitted.lay3x3 / Math.max(displayBankroll, 1)) * 100;
+  const overAllocPct =
+    (displayCommitted.over / Math.max(displayBankroll, 1)) * 100;
+  const availPct =
+    (displayCommitted.available / Math.max(displayBankroll, 1)) * 100;
 
   return (
     <div className="term-root">
-      {/* KPI Row */}
+      {exchange != null && (
+        <section className="term-exchange-bar" aria-label="Bolsa Exchange BetBra">
+          <div className="term-exchange-head">
+            <span className="term-exchange-label">Bolsa Exchange</span>
+            <span className="term-exchange-status">
+              <i className={exchange.connected ? "is-on" : "is-off"} />
+              {exchange.connected ? "conectada" : "desconectada"}
+            </span>
+          </div>
+          <strong className="term-exchange-balance">
+            {exchange.connected && exchange.balance != null
+              ? fmtBrl(exchange.balance)
+              : "—"}
+          </strong>
+          <span className="term-exchange-sub">Saldo real BetBra</span>
+          {exchange.connected && exchange.balance == null && exchange.balanceError ? (
+            <span className="term-exchange-error">{exchange.balanceError}</span>
+          ) : null}
+          <span className="term-exchange-meta">
+            {exchange.openOffers === 1
+              ? "1 oferta aberta"
+              : `${exchange.openOffers} ofertas abertas`}
+            {exchange.offersSummary ? ` · ${exchange.offersSummary}` : ""}
+          </span>
+          {exchange.lastLay ? (
+            <span
+              className={`term-exchange-meta ${exchange.lastLay.ok ? "is-up" : "is-down"}`}
+            >
+              Último Lay: {exchange.lastLay.ok ? "ok" : "falhou"}
+              {exchange.lastLay.score ? ` · ${exchange.lastLay.score}` : ""}
+              {exchange.lastLay.message ? ` · ${exchange.lastLay.message}` : ""}
+            </span>
+          ) : (
+            <span className="term-exchange-meta">
+              Nenhum Auto Lay neste aparelho ainda
+            </span>
+          )}
+          <div className="term-exchange-actions">
+            {exchange.onRefresh ? (
+              <button
+                type="button"
+                className="term-exchange-btn"
+                disabled={exchange.busy}
+                onClick={exchange.onRefresh}
+              >
+                Atualizar
+              </button>
+            ) : null}
+            {exchange.onConnect ? (
+              <button
+                type="button"
+                className="term-exchange-btn is-primary"
+                disabled={exchange.busy}
+                onClick={exchange.onConnect}
+              >
+                {exchange.connected ? "Reconectar" : "Conectar BetBra"}
+              </button>
+            ) : null}
+          </div>
+        </section>
+      )}
+
+      {/* KPI Row — com BetBra conectada usa saldo real; senão cadastro Central */}
       <section className="term-kpi-row">
         <article className="term-kpi term-kpi-hero">
-          <span className="term-kpi-label">Banca</span>
+          <span className="term-kpi-label">
+            {usingExchangeBankroll ? "Banca" : "Banca gestão"}
+          </span>
           <AnimatedValue
-            value={currentBankroll}
+            value={displayBankroll}
             format={(n) => fmtBrl(n)}
             className="term-kpi-value term-glow"
           />
-          <span className={`term-kpi-delta ${todayBankrollChangePct >= 0 ? "is-up" : "is-down"}`}>
-            {fmtPct(todayBankrollChangePct, true)} Hoje
+          <span
+            className={`term-kpi-delta ${
+              usingExchangeBankroll
+                ? "is-up"
+                : todayBankrollChangePct >= 0
+                  ? "is-up"
+                  : "is-down"
+            }`}
+          >
+            {usingExchangeBankroll
+              ? "Saldo real BetBra Exchange"
+              : `${fmtPct(todayBankrollChangePct, true)} Hoje · cadastro manual`}
           </span>
         </article>
 
         <article className="term-kpi">
-          <span className="term-kpi-label">Lucro</span>
+          <span className="term-kpi-label">
+            {usingExchangeBankroll ? "Lucro tipado" : "Lucro (gestão)"}
+          </span>
           <AnimatedValue
             value={todayProfit}
             format={(n) => fmtBrl(n, true)}
@@ -451,36 +578,48 @@ export function TradingTerminal({
           <span className="term-kpi-label">Acerto</span>
           <strong className="term-kpi-value">{winRate.pct.toFixed(0)}%</strong>
           <span className="term-kpi-sub">
-            {winRate.wins} / {winRate.total} operações
+            {winRate.wins} / {winRate.total} ops. lançadas
           </span>
         </article>
 
         <article className="term-kpi">
-          <span className="term-kpi-label">Operações hoje</span>
+          <span className="term-kpi-label">
+            {usingExchangeBankroll ? "Ops. tipadas hoje" : "Ops. gestão hoje"}
+          </span>
           <strong className="term-kpi-value">{stats.todayOps}</strong>
           <span className="term-kpi-sub">Em andamento: {stats.pending}</span>
         </article>
       </section>
 
-      {/* Painéis fixos — gestão, evolução e indicadores */}
+      {/* Painéis fixos — alocação, evolução e indicadores */}
       <section className="term-main-grid">
         <div className="term-col-left">
           <article className="term-panel term-bankroll-panel">
             <header className="term-panel-head">
-              <h3>Gestão Inteligente</h3>
+              <h3>
+                {usingExchangeBankroll ? "Alocação (Exchange)" : "Gestão tipada"}
+              </h3>
               <span className={`term-risk ${riskClass}`}>
                 Risco {riskLabel}
               </span>
             </header>
+            {!usingExchangeBankroll ? (
+              <p className="term-hint" style={{ marginTop: 0 }}>
+                Cadastro/histórico do painel (Central). Conecte a BetBra no APK
+                para usar o saldo real.
+              </p>
+            ) : null}
             <div className="term-bankroll-center">
-              <span>Banca</span>
-              <strong>{fmtBrl(currentBankroll)}</strong>
+              <span>{usingExchangeBankroll ? "Saldo Exchange" : "Banca gestão"}</span>
+              <strong>{fmtBrl(displayBankroll)}</strong>
             </div>
             <div className="term-stake-grid">
               <div className="term-stake-block">
                 <div className="term-stake-head">
                   <strong>Lay 3x3</strong>
-                  <span>{lay3x3StakePct}% · {fmtBrl(committed.lay3x3)}</span>
+                  <span>
+                    {lay3x3StakePct}% · {fmtBrl(displayCommitted.lay3x3)}
+                  </span>
                 </div>
                 <div className="term-stake-bar is-green">
                   <i style={{ width: `${lay3x3StakePct}%` }} />
@@ -489,7 +628,9 @@ export function TradingTerminal({
               <div className="term-stake-block">
                 <div className="term-stake-head">
                   <strong>Lay Over</strong>
-                  <span>{overStakePct}% · {fmtBrl(committed.over)}</span>
+                  <span>
+                    {overStakePct}% · {fmtBrl(displayCommitted.over)}
+                  </span>
                 </div>
                 <div className="term-stake-bar is-blue">
                   <i style={{ width: `${overStakePct}%` }} />
@@ -499,13 +640,13 @@ export function TradingTerminal({
             <div className="term-available-row">
               <div>
                 <span>Capital disponível</span>
-                <strong>{fmtBrl(committed.available)}</strong>
+                <strong>{fmtBrl(displayCommitted.available)}</strong>
               </div>
               <Donut lay3x3Pct={lay3x3AllocPct} overPct={overAllocPct} availablePct={availPct} />
             </div>
-            {!configured && !bankrollLoading && (
+            {!usingExchangeBankroll && !configured && !bankrollLoading && (
               <p className="term-hint">
-                Conecte o Supabase (central3x3) para sincronizar banca e extrato reais.
+                Conecte o Supabase (central3x3) para sincronizar o cadastro de gestão.
               </p>
             )}
           </article>

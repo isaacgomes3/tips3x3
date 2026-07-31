@@ -1,4 +1,4 @@
-/** Config Eventos Raros — Correct Score lay ≥ 100, live late, hold até settle. */
+/** Config Eventos Raros — Correct Score lay ≥ 100, 2º tempo, hold até settle. */
 export const EVENTOS_RAROS = {
   livePreferred: true,
   minLayOdds: 100,
@@ -8,16 +8,27 @@ export const EVENTOS_RAROS = {
     preferredMin: 120,
     preferredMax: 400,
   },
-  /** Janela late / perto do fecho. */
-  minute: { min: 70, max: 98 },
+  /**
+   * Só 2º tempo.
+   * max = teto de minuto válido (90 + acréscimos).
+   */
+  secondHalfMinute: 45,
+  minute: { min: 45, max: 98 },
   /** Minuto de referência para tempo restante (90 + acréscimos). */
   fullTimeMinute: 95,
+  /**
+   * Diff de gols do live |casa−fora| ≥ N → entrada do padrão a qualquer
+   * momento no 2º tempo. Abaixo disso → só nos últimos `lastMinutesBeforeEnd`.
+   */
+  minGoalDiffAnytime: 3,
+  /** Com diff &lt; minGoalDiffAnytime, só nos últimos N minutos. */
+  lastMinutesBeforeEnd: 10,
   minLayLiquidity: 5,
   /** Tempo crítico (gate B): gols extras vs minutos restantes. */
   time: {
     minGoalsNeeded: 2,
     maxGoalsPerRemainingMin: 0.2,
-    /** Com minuto ≥ late e needed ≥ 3 → time-blocked independente da taxa. */
+    /** Com needed ≥ 3 no 2º tempo → time-blocked independente da taxa. */
     lateMinGoalsHard: 3,
   },
   /** Forma: projeção alta enfraquece tese de placar raro. */
@@ -30,8 +41,8 @@ export const EVENTOS_RAROS = {
    */
   maxEntriesPerEvent: 8,
   /**
-   * Placar já impossível (ex.: live 1-1 → lay 0-2): entrada imediata.
-   * Sem risco de settle — sem filtros de book/late/modelo (só odd lay ≥ minLayOdds).
+   * Placar já impossível (ex.: live 1-1 → lay 0-2): prioridade máxima.
+   * Ainda exige 2º tempo + odd lay ≥ minLayOdds.
    */
   alreadyImpossible: {
     enabled: true,

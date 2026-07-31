@@ -10,11 +10,18 @@ import { MomentAnalysisCard } from "@/components/MomentAnalysisCard";
 import { OddsQuoteButtons } from "@/components/OddsQuoteButtons";
 import { OddsVolumeChart } from "@/components/OddsVolumeChart";
 import { LiveAlertToasts } from "@/components/LiveAlertToasts";
-import { NativeShell } from "@/components/NativeShell";
 import { CentralGestao } from "@/components/CentralGestao";
 import { TradingTerminal } from "@/components/terminal/TradingTerminal";
 import { OddsComparePanel } from "@/components/OddsComparePanel";
+import { IndicationsStats } from "@/components/IndicationsStats";
+import UsersAdmin from "@/components/UsersAdmin";
 import { useBankrollData } from "@/hooks/useBankrollData";
+import {
+  isEventosRarosEnabled,
+  isLay3x3Enabled,
+  setEventosRarosEnabled,
+  setLay3x3Enabled,
+} from "@/lib/strategy-settings";
 import { useGamesLiveEnrichment, type EnrichedLiveSnapshot } from "@/hooks/useGamesLiveEnrichment";
 import { MatchStatsDrawer, type StatsTarget } from "@/components/MatchStatsDrawer";
 import { useFavorites } from "@/hooks/useFavorites";
@@ -23,13 +30,26 @@ import {
   getTargetProfitPctPoints,
   setTargetProfitPctPoints,
 } from "@/lib/panel-settings";
+import { isNativeApp } from "@/lib/native-alerts";
+import {
+  fetchBetBraBalance,
+  fetchBetBraBalanceSnapshot,
+  fetchBetBraOffers,
+  getCachedBetBraSession,
+  getNativeLayLastResult,
+  getNativeStakePct,
+  openBetBraLogin,
+  refreshBetBraSession,
+  setNativeStakePct,
+  subscribeNativeLay,
+  type NativeLayLastResult,
+} from "@/lib/betbra/native-lay";
 import {
   BarChart3,
   Grid3x3,
   List,
   Radio,
   Star,
-  Target,
   Sparkles,
 } from "lucide-react";
 
@@ -386,6 +406,7 @@ type NavView =
   | "jogos"
   | "live"
   | "alertas"
+  | "estatisticas"
   | "gestao"
   | "comparar"
   | "evento"
@@ -445,6 +466,7 @@ function isNavView(v: string | null): v is NavView {
     v === "jogos" ||
     v === "live" ||
     v === "alertas" ||
+    v === "estatisticas" ||
     v === "gestao" ||
     v === "comparar" ||
     v === "evento" ||
@@ -672,14 +694,65 @@ export function Dashboard() {
   const [query, setQuery] = useState("");
   const [tick, setTick] = useState(0);
   const [view, setView] = useState<NavView>("dashboard");
-  const [strategy, setStrategy] = useState<StrategyId>("eventos-raros");
+  const [strategy, setStrategy] = useState<StrategyId>("lay-3x3");
   const [statsTarget, setStatsTarget] = useState<StatsTarget | null>(null);
   const [topNavOpen, setTopNavOpen] = useState(false);
-  const [targetProfitPct, setTargetProfitPct] = useState(1);
-  const [profitDraft, setProfitDraft] = useState("1");
+  const [targetProfitPct, setTargetProfitPct] = useState(0.5);
+  const [profitDraft, setProfitDraft] = useState("0,5");
+  const [lay3x3On, setLay3x3On] = useState(true);
+  const [eventosRarosOn, setEventosRarosOn] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [nativeApp, setNativeApp] = useState(false);
+  const [betBraConnected, setBetBraConnected] = useState(false);
+  const [betBraBalance, setBetBraBalance] = useState<number | null>(null);
+  const [betBraBalanceError, setBetBraBalanceError] = useState<string | null>(
+    null,
+  );
+  const [betBraOpenOffers, setBetBraOpenOffers] = useState(0);
+  const [betBraOffersSummary, setBetBraOffersSummary] = useState("");
+  const [nativeStakePct, setNativeStakePctState] = useState(99);
+  const [nativeLayLast, setNativeLayLast] = useState<NativeLayLastResult | null>(
+    null,
+  );
+  const [betBraBusy, setBetBraBusy] = useState(false);
+  const [isMaster, setIsMaster] = useState(false);
   const bankroll = useBankrollData();
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((data: { authenticated?: boolean; isMaster?: boolean }) => {
+        if (!cancelled) setIsMaster(Boolean(data.authenticated && data.isMaster));
+      })
+      .catch(() => {
+        if (!cancelled) setIsMaster(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    setLay3x3On(isLay3x3Enabled());
+    setEventosRarosOn(isEventosRarosEnabled());
+  }, []);
+
+  const refreshExchangeSnapshot = useCallback(async () => {
+    if (!isNativeApp()) return;
+    const s = await refreshBetBraSession();
+    setBetBraConnected(Boolean(s.connected));
+    const [balSnap, offers] = await Promise.all([
+      fetchBetBraBalanceSnapshot(),
+      fetchBetBraOffers(),
+    ]);
+    setBetBraBalance(balSnap.balance);
+    setBetBraBalanceError(balSnap.error ?? null);
+    setBetBraOpenOffers(offers?.openCount ?? 0);
+    setBetBraOffersSummary(offers?.summary ?? "");
+    setNativeLayLast(getNativeLayLastResult());
+  }, []);
 
   useEffect(() => {
     if (!searchParams.get("view")) {
@@ -695,7 +768,34 @@ export function Dashboard() {
   useEffect(() => {
     setMounted(true);
     setLastSyncAt(Date.now());
-  }, []);
+    const native = isNativeApp();
+    setNativeApp(native);
+    setNativeStakePctState(getNativeStakePct());
+    setNativeLayLast(getNativeLayLastResult());
+    if (!native) return;
+    void refreshExchangeSnapshot();
+    const poll = window.setInterval(() => {
+      void refreshExchangeSnapshot();
+    }, 30_000);
+    const unsub = subscribeNativeLay(() => {
+      setNativeStakePctState(getNativeStakePct());
+      setNativeLayLast(getNativeLayLastResult());
+      const cached = getCachedBetBraSession();
+      if (cached) setBetBraConnected(Boolean(cached.connected));
+      void fetchBetBraBalanceSnapshot().then((snap) => {
+        setBetBraBalance(snap.balance);
+        setBetBraBalanceError(snap.error ?? null);
+      });
+      void fetchBetBraOffers().then((o) => {
+        setBetBraOpenOffers(o?.openCount ?? 0);
+        setBetBraOffersSummary(o?.summary ?? "");
+      });
+    });
+    return () => {
+      window.clearInterval(poll);
+      unsub();
+    };
+  }, [refreshExchangeSnapshot]);
   const { favorites, favoriteIds, toggleFavorite, isFavorite, reconcileWithLive } =
     useFavorites();
 
@@ -1147,16 +1247,13 @@ export function Dashboard() {
   const topNavItems: Array<{ id: NavView | "planos"; label: string; href?: string }> = [
     { id: "dashboard", label: "Dashboard" },
     { id: "jogos", label: "Sinais" },
-    { id: "comparar", label: "Comparar" },
-    { id: "live", label: "Resultados" },
-    { id: "gestao", label: "Histórico" },
+    { id: "estatisticas", label: "Estatísticas" },
     { id: "planos", label: "Planos", href: "/" },
     { id: "config", label: "Perfil" },
   ];
 
   return (
     <div className="app-frame is-terminal">
-      <NativeShell />
       <LiveAlertToasts
         toasts={toasts}
         onDismiss={dismiss}
@@ -1210,13 +1307,22 @@ export function Dashboard() {
           </nav>
         </div>
         <div className="term-topbar-right">
-          <label className="term-ext-switch" title="Envio automático via extensão Bolsa Manual">
-            <span className="term-ext-switch-label">Ativar extensão</span>
+          <label
+            className="term-ext-switch"
+            title={
+              nativeApp
+                ? "Auto Lay no app (Lay 3x3 green / Eventos raros hold — requer BetBra)"
+                : "Envio automático via extensão Bolsa Manual"
+            }
+          >
+            <span className="term-ext-switch-label">
+              {nativeApp ? "Auto Lay" : "Ativar extensão"}
+            </span>
             <input
               type="checkbox"
               checked={!!extAutoSend}
               onChange={(e) => setExtAutoSend(e.target.checked)}
-              aria-label="Ativar extensão"
+              aria-label={nativeApp ? "Auto Lay" : "Ativar extensão"}
             />
             <span className="term-ext-switch-track" aria-hidden />
           </label>
@@ -1254,7 +1360,10 @@ export function Dashboard() {
       </header>
 
       <main className="main-pane is-terminal">
-        {view !== "dashboard" && view !== "gestao" && view !== "comparar" && (
+        {view !== "dashboard" &&
+          view !== "gestao" &&
+          view !== "comparar" &&
+          view !== "estatisticas" && (
         <header className="main-head">
           <div className="main-head-left">
             <div>
@@ -1309,6 +1418,31 @@ export function Dashboard() {
             signalStats={signalStats}
             lastSyncSec={lastSyncSec}
             onOpenEvent={openEvent}
+            exchange={
+              nativeApp
+                ? {
+                    connected: betBraConnected,
+                    balance: betBraBalance,
+                    balanceError: betBraBalanceError,
+                    openOffers: betBraOpenOffers,
+                    offersSummary: betBraOffersSummary,
+                    lastLay: nativeLayLast,
+                    busy: betBraBusy,
+                    onConnect: () => {
+                      setBetBraBusy(true);
+                      void openBetBraLogin()
+                        .then(() => refreshExchangeSnapshot())
+                        .finally(() => setBetBraBusy(false));
+                    },
+                    onRefresh: () => {
+                      setBetBraBusy(true);
+                      void refreshExchangeSnapshot().finally(() =>
+                        setBetBraBusy(false),
+                      );
+                    },
+                  }
+                : null
+            }
           />
         )}
 
@@ -1323,14 +1457,6 @@ export function Dashboard() {
                 >
                   <Grid3x3 aria-hidden className="pill-icon" />
                   Lay 3x3
-                </button>
-                <button
-                  type="button"
-                  className={`pill ${strategy === "qov-lay-zebra" ? "active" : ""}`}
-                  onClick={() => goStrategy("qov-lay-zebra")}
-                >
-                  <Target aria-hidden className="pill-icon" />
-                  Lay QOV zebra
                 </button>
                 <button
                   type="button"
@@ -1546,17 +1672,75 @@ export function Dashboard() {
                   onChange={(e) => setExtAutoSend(e.target.checked)}
                 />
                 <span>
-                  <strong>Auto ENVIAR na extensão</strong>
+                  <strong>
+                    {nativeApp ? "Auto Lay" : "Auto ENVIAR na extensão"}
+                  </strong>
                   <em>
-                    No alerta ENTRAR (3-3 / QOV zebra), envia Lay com a odd
-                    do painel e a saída Back pela % da extensão.
+                    {nativeApp
+                      ? "Envia ordens na BetBra pelas estratégias ligadas abaixo (3x3 = Lay+Back · Eventos raros = hold)."
+                      : "No alerta ENTRAR das estratégias ligadas, envia Lay (e Back no 3x3) pela extensão."}
+                  </em>
+                </span>
+              </label>
+              <label className="alertas-ext-toggle">
+                <input
+                  type="checkbox"
+                  checked={lay3x3On}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setLay3x3Enabled(on);
+                    setLay3x3On(on);
+                    if (on) setStrategy("lay-3x3");
+                  }}
+                />
+                <span>
+                  <strong>Auto Lay 3x3</strong>
+                  <em>
+                    Enviar Lay→Back (lucro{" "}
+                    {String(targetProfitPct).replace(".", ",")}%). Notificações
+                    ENTRAR sempre.
+                  </em>
+                </span>
+              </label>
+              <label className="alertas-ext-toggle">
+                <input
+                  type="checkbox"
+                  checked={eventosRarosOn}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setEventosRarosEnabled(on);
+                    setEventosRarosOn(on);
+                    if (on) setStrategy("eventos-raros");
+                  }}
+                />
+                <span>
+                  <strong>Auto Eventos raros</strong>
+                  <em>
+                    Enviar Lay hold. Notificações ENTRAR de raros sempre
+                    aparecem.
                   </em>
                 </span>
               </label>
               <p className="alertas-ext-hint">
-                {extAutoSend
-                  ? "Ligado — mantenha a extensão Bolsa Manual atualizada (v1.6+) e logada (Lay 3-3 / QOV zebra)."
-                  : "Desligado — marque para ligar o envio automático."}
+                {nativeApp
+                  ? extAutoSend
+                    ? betBraConnected
+                      ? `Ligado — ${[
+                          lay3x3On ? "Lay 3x3" : null,
+                          eventosRarosOn ? "Eventos raros" : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" + ") || "nenhuma estratégia"} com sessão BetBra.`
+                      : "Ligado — conecte a BetBra em Perfil para enviar ordens."
+                    : "Desligado — marque Auto Lay para enviar no app."
+                  : extAutoSend
+                    ? "Ligado — mantenha a extensão Bolsa Manual atualizada e logada."
+                    : "Desligado — marque para ligar o envio automático."}
+              </p>
+              <p className="alertas-ext-hint">
+                Notificações exigem o painel aberto. Com a tela desligada o
+                navegador/app suspende o JavaScript — mesmo com alertas ativos,
+                nenhum sinal novo é detectado (não há push remoto ainda).
               </p>
             </div>
             <ul className="alerts">
@@ -1592,6 +1776,22 @@ export function Dashboard() {
           </div>
         )}
 
+        {view === "estatisticas" && (
+          <div className="panel-block">
+            <header className="main-head" style={{ marginBottom: "1rem" }}>
+              <div className="main-head-left">
+                <div>
+                  <h2 className="main-head-title">
+                    Estatísticas <span>de indicações</span>
+                  </h2>
+                  <p>Eventos raros e Lucro certo registrados pelo scanner</p>
+                </div>
+              </div>
+            </header>
+            <IndicationsStats />
+          </div>
+        )}
+
         {view === "comparar" && (
           <div className="panel-block">
             <OddsComparePanel />
@@ -1601,10 +1801,51 @@ export function Dashboard() {
         {view === "config" && (
           <div className="panel-block config-panel">
             <section className="config-card">
-              <h3>Filtro · percentual alvo</h3>
+              <h3>Auto Lay · estratégias</h3>
               <p className="config-lead">
-                Define o lucro alvo sobre a liability para calcular a odd de saída
-                Back e os sinais ENTRAR do painel (ex.: 0,1 ou 1).
+                Controla só o envio automático de ordens. As notificações ENTRAR
+                continuam para todas as estratégias. Padrão: só Lay 3x3 envia.
+              </p>
+              <label className="alertas-ext-toggle">
+                <input
+                  type="checkbox"
+                  checked={lay3x3On}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setLay3x3Enabled(on);
+                    setLay3x3On(on);
+                    if (on) setStrategy("lay-3x3");
+                  }}
+                />
+                <span>
+                  <strong>Lay 3x3</strong>
+                  <em>Auto: Lay entrada + Back saída (green) com % lucro abaixo.</em>
+                </span>
+              </label>
+              <label className="alertas-ext-toggle" style={{ marginTop: "0.65rem" }}>
+                <input
+                  type="checkbox"
+                  checked={eventosRarosOn}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setEventosRarosEnabled(on);
+                    setEventosRarosOn(on);
+                    if (on) setStrategy("eventos-raros");
+                  }}
+                />
+                <span>
+                  <strong>Eventos raros</strong>
+                  <em>Auto: Lay hold em CS alto — sem green Back.</em>
+                </span>
+              </label>
+            </section>
+
+            <section className="config-card">
+              <h3>Lucro alvo · Lay 3x3</h3>
+              <p className="config-lead">
+                Saída Back / green automática. Padrão{" "}
+                <strong>0,5%</strong> da liability.{" "}
+                <strong>Não se aplica a Eventos raros</strong> (hold).
               </p>
               <label className="config-field">
                 <span>Lucro alvo %</span>
@@ -1666,7 +1907,9 @@ export function Dashboard() {
             </section>
 
             <section className="config-card">
-              <h3>Extensão Bolsa Manual</h3>
+              <h3>
+                {nativeApp ? "Auto Lay no app" : "Extensão Bolsa Manual"}
+              </h3>
               <label className="alertas-ext-toggle">
                 <input
                   type="checkbox"
@@ -1674,14 +1917,106 @@ export function Dashboard() {
                   onChange={(e) => setExtAutoSend(e.target.checked)}
                 />
                 <span>
-                  <strong>Auto ENVIAR na extensão</strong>
+                  <strong>
+                    {nativeApp ? "Auto Lay" : "Auto ENVIAR na extensão"}
+                  </strong>
                   <em>
-                    No alerta ENTRAR (Lay 3-3 / QOV zebra), envia Lay com a
-                    odd do painel. A saída Back usa o lucro % da extensão.
+                    {nativeApp
+                      ? "Com as estratégias ligadas: Lay 3x3 envia Lay+Back; Eventos raros envia Lay hold."
+                      : "No ENTRAR das estratégias ligadas, envia Lay (e Back no 3x3) pela extensão / % lucro."}
                   </em>
                 </span>
               </label>
+
+              {nativeApp && (
+                <div className="native-betbra-panel">
+                  <p className="config-lead" style={{ marginTop: "0.85rem" }}>
+                    Status Bolsa (Exchange):{" "}
+                    <strong
+                      className={
+                        betBraConnected
+                          ? "native-betbra-ok"
+                          : "native-betbra-off"
+                      }
+                    >
+                      {betBraConnected ? "conectada" : "desconectada"}
+                    </strong>
+                    {betBraBalance != null
+                      ? ` · saldo ~ R$ ${betBraBalance.toFixed(2)}`
+                      : ""}
+                  </p>
+                  {!betBraConnected ? (
+                    <p className="alertas-ext-hint">
+                      Login só no site de esportes não basta — abra a{" "}
+                      <strong>Bolsa/Exchange</strong>, confira o saldo lá e
+                      toque em Pronto.
+                    </p>
+                  ) : null}
+                  <div className="config-field-row" style={{ gap: "0.5rem" }}>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={betBraBusy}
+                      onClick={() => {
+                        setBetBraBusy(true);
+                        void openBetBraLogin()
+                          .then(() => refreshExchangeSnapshot())
+                          .finally(() => setBetBraBusy(false));
+                      }}
+                    >
+                      {betBraConnected ? "Reconectar BetBra" : "Conectar BetBra"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={betBraBusy}
+                      onClick={() => {
+                        setBetBraBusy(true);
+                        void refreshExchangeSnapshot().finally(() =>
+                          setBetBraBusy(false),
+                        );
+                      }}
+                    >
+                      Atualizar sessão
+                    </button>
+                  </div>
+                  <label className="config-field" style={{ marginTop: "0.85rem" }}>
+                    % da banca por Lay (Eventos raros)
+                    <div className="config-field-row">
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        step={1}
+                        value={nativeStakePct}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          setNativeStakePctState(n);
+                          setNativeStakePct(n);
+                        }}
+                      />
+                      <span>%</span>
+                    </div>
+                    <em className="config-hint">
+                      Padrão 99% da banca disponível · hold (sem green Back)
+                    </em>
+                  </label>
+                  {nativeLayLast && (
+                    <p
+                      className={`alertas-ext-hint ${
+                        nativeLayLast.ok
+                          ? "native-betbra-ok"
+                          : "native-betbra-off"
+                      }`}
+                    >
+                      Última ordem: {nativeLayLast.message}
+                    </p>
+                  )}
+                </div>
+              )}
             </section>
+
+            {isMaster ? <UsersAdmin /> : null}
           </div>
         )}
 

@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { isNativeApp } from "@/lib/native-alerts";
 
 export default function LoginClient() {
   const router = useRouter();
@@ -41,7 +42,13 @@ export default function LoginClient() {
     <div className="sell-login-page">
       <div className="sell-login-bg" aria-hidden />
       <div className="sell-login-card">
-        <Link href="/" className="sell-login-brand">
+        <Link
+          href={isNativeApp() ? "/login" : "/"}
+          className="sell-login-brand"
+          onClick={(e) => {
+            if (isNativeApp()) e.preventDefault();
+          }}
+        >
           <img src="/logo-tips3x3.png" alt="tips3x3" width={160} height={40} />
         </Link>
         <h1>Bem-vindo de volta!</h1>

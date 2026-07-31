@@ -27,6 +27,14 @@
 
         </activity>
 
+        <activity
+            android:name=".BetBraLoginActivity"
+            android:label="BetBra"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

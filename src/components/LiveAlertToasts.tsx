@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { LiveToast } from "@/hooks/useLiveAlerts";
 
 const KIND_LABEL: Record<LiveToast["kind"], string> = {
@@ -19,6 +20,14 @@ export function LiveAlertToasts({
   alertsArmed?: boolean;
   onArmAlerts?: () => void;
 }) {
+  const [showScreenOffHint, setShowScreenOffHint] = useState(false);
+
+  useEffect(() => {
+    if (!alertsArmed || !showScreenOffHint) return;
+    const id = window.setTimeout(() => setShowScreenOffHint(false), 10_000);
+    return () => window.clearTimeout(id);
+  }, [alertsArmed, showScreenOffHint]);
+
   return (
     <>
       <div className="live-alert-controls">
@@ -26,10 +35,19 @@ export function LiveAlertToasts({
           <button
             type="button"
             className="live-alert-arm"
-            onClick={() => onArmAlerts()}
+            onClick={() => {
+              setShowScreenOffHint(true);
+              onArmAlerts();
+            }}
           >
             Ativar alertas ENTRAR (som + notificação)
           </button>
+        ) : null}
+        {alertsArmed && showScreenOffHint ? (
+          <p className="live-alert-armed-hint">
+            Alertas ativos. Com a tela desligada o navegador/app congela e{" "}
+            <strong>não notifica</strong> — mantenha o painel aberto.
+          </p>
         ) : null}
       </div>
 

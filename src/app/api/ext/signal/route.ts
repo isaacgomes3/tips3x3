@@ -43,6 +43,9 @@ export async function POST(request: Request) {
   const exitMode =
     exitRaw === "hold" || exitRaw === "green" ? exitRaw : undefined;
 
+  const targetBackOdds = Number(body.targetBackOdds);
+  const targetProfitPct = Number(body.targetProfitPct);
+
   const signal = publishExtSignal(auth.session.email, {
     eventId,
     eventName: body.eventName ? String(body.eventName) : undefined,
@@ -52,6 +55,14 @@ export async function POST(request: Request) {
     runnerId: body.runnerId ? String(body.runnerId) : undefined,
     mexchangeUrl: body.mexchangeUrl ? String(body.mexchangeUrl) : undefined,
     exitMode,
+    targetBackOdds:
+      Number.isFinite(targetBackOdds) && targetBackOdds > 1.01
+        ? targetBackOdds
+        : null,
+    targetProfitPct:
+      Number.isFinite(targetProfitPct) && targetProfitPct > 0
+        ? targetProfitPct
+        : null,
     at: Number(body.at) || Date.now(),
     dedupeKey,
   });

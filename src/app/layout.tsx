@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Rajdhani, Sora } from "next/font/google";
+import { NativeShell } from "@/components/NativeShell";
 import "./globals.css";
 
 const sora = Sora({
@@ -38,6 +39,8 @@ export const metadata: Metadata = {
 export const viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover" as const,
 };
 
@@ -51,7 +54,10 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${sora.variable} ${inter.variable} ${rajdhani.variable} h-full antialiased`}
     >
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">
+        <NativeShell />
+        {children}
+      </body>
     </html>
   );
 }

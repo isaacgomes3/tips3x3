@@ -4,6 +4,7 @@ import {
   getMasterCredentials,
   sessionCookieOptions,
 } from "@/lib/auth/session";
+import { verifyStoredUserCredentials } from "@/lib/auth/users-store";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,15 @@ export async function POST(request: Request) {
       );
     }
 
-    if (email !== master.email || password !== master.password) {
+    let ok = false;
+    if (email === master.email && password === master.password) {
+      ok = true;
+    } else {
+      const stored = await verifyStoredUserCredentials(email, password);
+      ok = stored.ok;
+    }
+
+    if (!ok) {
       return NextResponse.json(
         { error: "Credenciais inválidas." },
         { status: 401 },

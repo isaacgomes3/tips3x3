@@ -25,6 +25,14 @@ import {
   setExtAutoSendEnabled,
 } from "@/lib/bolsa-bridge";
 import { isFinishedStatus } from "@/lib/live-status";
+import {
+  getTargetProfitPctPoints,
+  profitPointsToDecimal,
+} from "@/lib/panel-settings";
+import {
+  isEventosRarosEnabled,
+  isLay3x3Enabled,
+} from "@/lib/strategy-settings";
 
 export type LiveToast = {
   id: string;
@@ -85,6 +93,8 @@ type LiveScoreRow = {
   tradePlan?: {
     entryReady?: boolean;
     layOdds?: number | null;
+    targetBackOdds?: number | null;
+    targetProfitPct?: number;
   };
   qovLayUnderdog?: QovSnap;
   eventosRaros?: EventosRarosSnap;
@@ -190,6 +200,8 @@ export function useLiveAlerts(
         runnerId?: string;
         mexchangeUrl?: string;
         exitMode?: "hold" | "green";
+        targetBackOdds?: number;
+        targetProfitPct?: number;
         dedupeKey: string;
       },
     ): boolean => {
@@ -209,6 +221,8 @@ export function useLiveAlerts(
         runnerId: opts.runnerId,
         mexchangeUrl: opts.mexchangeUrl || row.mexchangeUrl,
         exitMode: opts.exitMode,
+        targetBackOdds: opts.targetBackOdds,
+        targetProfitPct: opts.targetProfitPct,
         dedupeKey: opts.dedupeKey,
       });
       if (ok) {
@@ -433,11 +447,10 @@ export function useLiveAlerts(
         continue;
       }
 
-      // ENTRAR Lay 3-3 — apenas pelo gate estrito do plano.
+      // ENTRAR Lay 3-3 — notificação sempre; Auto Lay só se estratégia ligada.
       const layEntryKey = `${id}:lay-3x3`;
       const layReady = Boolean(row.tradePlan?.entryReady);
       if (shouldFireEnter(layEntryKey, layReady)) {
-        enterNotifiedRef.current.add(layEntryKey);
         const minute =
           row.live?.minute != null
             ? ` @ ${Math.floor(row.live.minute)}′`
@@ -445,22 +458,42 @@ export function useLiveAlerts(
         const layOdds = Number(
           row.tradePlan?.layOdds ?? row.analysis.layOdds ?? 0,
         );
-        pushAlert({
-          kind: "enter",
-          title: `ENTRAR · ${name}`,
-          body: label
-            ? `Indicação de entrada · ${label}${minute}${layOdds > 1 ? ` · lay x${layOdds}` : ""}`
-            : `Indicação de entrada${minute}${layOdds > 1 ? ` · lay x${layOdds}` : ""}`,
-          tag: `tips3x3-enter-${id}-${Date.now()}`,
-        });
-        sendToExtension(row, {
-          score: "3-3",
-          layOdds,
-          marketId: row.analysis.marketId,
-          runnerId: row.analysis.runnerId,
-          mexchangeUrl: row.mexchangeUrl,
-          dedupeKey: layEntryKey,
-        });
+        const profitPct =
+          row.tradePlan?.targetProfitPct != null &&
+          row.tradePlan.targetProfitPct > 0
+            ? row.tradePlan.targetProfitPct
+            : profitPointsToDecimal(getTargetProfitPctPoints());
+        const targetBack =
+          row.tradePlan?.targetBackOdds != null &&
+          row.tradePlan.targetBackOdds > 1.01
+            ? row.tradePlan.targetBackOdds
+            : undefined;
+        if (!enterNotifiedRef.current.has(layEntryKey)) {
+          enterNotifiedRef.current.add(layEntryKey);
+          pushAlert({
+            kind: "enter",
+            title: `ENTRAR · LAY 3x3 · ${name}`,
+            body: label
+              ? `Lay→Back · ${label}${minute}${layOdds > 1 ? ` · lay x${layOdds}` : ""}${
+                  targetBack ? ` → back x${targetBack.toFixed(2)}` : ""
+                } · ${(profitPct * 100).toFixed(1).replace(".", ",")}%`
+              : `Lay→Back${minute}${layOdds > 1 ? ` · lay x${layOdds}` : ""} · ${(profitPct * 100).toFixed(1).replace(".", ",")}%`,
+            tag: `tips3x3-enter-${id}-${Date.now()}`,
+          });
+        }
+        if (isLay3x3Enabled()) {
+          sendToExtension(row, {
+            score: "3-3",
+            layOdds,
+            marketId: row.analysis.marketId,
+            runnerId: row.analysis.runnerId,
+            mexchangeUrl: row.mexchangeUrl,
+            exitMode: "green",
+            targetBackOdds: targetBack,
+            targetProfitPct: profitPct,
+            dedupeKey: layEntryKey,
+          });
+        }
       }
 
       // ENTRAR Lay QOV zebra (auto-extensão).
@@ -493,7 +526,7 @@ export function useLiveAlerts(
         });
       }
 
-      // ENTRAR Eventos raros — auto-entry por placar (multi-lay CS / mesmo saldo).
+      // ENTRAR Eventos raros — notificação sempre; Auto Lay só se estratégia ligada.
       const er = row.eventosRaros;
       const erEntries =
         er?.entries?.filter((e) => e.entryReady !== false) ??
@@ -504,6 +537,7 @@ export function useLiveAlerts(
                 layOdds: Number(er.layOdds ?? 0),
                 runnerId: er.runnerId,
                 marketId: er.marketId,
+                alreadyImpossible: undefined as boolean | undefined,
               },
             ]
           : []);
@@ -515,7 +549,6 @@ export function useLiveAlerts(
         const erKey = `${id}:eventos-raros:${score}`;
         const erReady = Boolean(er?.entryReady && !er?.settled);
         if (!shouldFireEnter(erKey, erReady)) continue;
-        enterNotifiedRef.current.add(erKey);
         const minute =
           row.live?.minute != null
             ? ` @ ${Math.floor(row.live.minute)}′`
@@ -526,29 +559,34 @@ export function useLiveAlerts(
             ? ` · ${erEntries.length} placares no evento`
             : "";
         const immediate = Boolean(entry.alreadyImpossible);
-        pushAlert({
-          kind: "enter",
-          title: immediate
-            ? `LUCRO CERTO · ${score} · ${name}`
-            : `ENTRAR · EVENTOS RAROS · ${score} · ${name}`,
-          body: label
-            ? `${label}${minute} · lay ${score} x${entryOdds > 1 ? entryOdds : "?"}${
-                immediate ? " · LUCRO CERTO (já impossível)" : " · hold"
-              }${multiHint}`
-            : `Lay ${score}${minute}${entryOdds > 1 ? ` · x${entryOdds}` : ""}${
-                immediate ? " · LUCRO CERTO" : " · hold"
-              }${multiHint}`,
-          tag: `tips3x3-enter-er-${id}-${score}-${Date.now()}`,
-        });
-        sendToExtension(row, {
-          score,
-          layOdds: entryOdds,
-          marketId: entry.marketId ?? er?.marketId,
-          runnerId: entry.runnerId,
-          mexchangeUrl: row.eventosRarosMexchangeUrl ?? row.mexchangeUrl,
-          exitMode: "hold",
-          dedupeKey: erKey,
-        });
+        if (!enterNotifiedRef.current.has(erKey)) {
+          enterNotifiedRef.current.add(erKey);
+          pushAlert({
+            kind: "enter",
+            title: immediate
+              ? `LUCRO CERTO · ${score} · ${name}`
+              : `ENTRAR · EVENTOS RAROS · ${score} · ${name}`,
+            body: label
+              ? `${label}${minute} · lay ${score} x${entryOdds > 1 ? entryOdds : "?"}${
+                  immediate ? " · LUCRO CERTO (já impossível)" : " · hold"
+                }${multiHint}`
+              : `Lay ${score}${minute}${entryOdds > 1 ? ` · x${entryOdds}` : ""}${
+                  immediate ? " · LUCRO CERTO" : " · hold"
+                }${multiHint}`,
+            tag: `tips3x3-enter-er-${id}-${score}-${Date.now()}`,
+          });
+        }
+        if (isEventosRarosEnabled()) {
+          sendToExtension(row, {
+            score,
+            layOdds: entryOdds,
+            marketId: entry.marketId ?? er?.marketId,
+            runnerId: entry.runnerId,
+            mexchangeUrl: row.eventosRarosMexchangeUrl ?? row.mexchangeUrl,
+            exitMode: "hold",
+            dedupeKey: erKey,
+          });
+        }
       }
       // Limpa chaves de placares que saíram do setup
       const activeErKeys = new Set(
@@ -596,22 +634,37 @@ export function useLiveAlerts(
           const layOdds = Number(
             row.tradePlan?.layOdds ?? row.analysis.layOdds ?? 0,
           );
+          const profitPct =
+            row.tradePlan?.targetProfitPct != null &&
+            row.tradePlan.targetProfitPct > 0
+              ? row.tradePlan.targetProfitPct
+              : profitPointsToDecimal(getTargetProfitPctPoints());
+          const targetBack =
+            row.tradePlan?.targetBackOdds != null &&
+            row.tradePlan.targetBackOdds > 1.01
+              ? row.tradePlan.targetBackOdds
+              : undefined;
           pushAlert({
             kind: "enter",
-            title: `ENTRAR · ${name}`,
+            title: `ENTRAR · LAY 3x3 · ${name}`,
             body: label
               ? `Indicação de entrada · ${label}`
               : "Indicação de entrada",
             tag: `tips3x3-enter-${id}-vis`,
           });
-          sendToExtension(row, {
-            score: "3-3",
-            layOdds,
-            marketId: row.analysis.marketId,
-            runnerId: row.analysis.runnerId,
-            mexchangeUrl: row.mexchangeUrl,
-            dedupeKey: layEntryKey,
-          });
+          if (isLay3x3Enabled()) {
+            sendToExtension(row, {
+              score: "3-3",
+              layOdds,
+              marketId: row.analysis.marketId,
+              runnerId: row.analysis.runnerId,
+              mexchangeUrl: row.mexchangeUrl,
+              exitMode: "green",
+              targetBackOdds: targetBack,
+              targetProfitPct: profitPct,
+              dedupeKey: layEntryKey,
+            });
+          }
         }
 
         const er = row.eventosRaros;
@@ -647,15 +700,17 @@ export function useLiveAlerts(
               : `Lay ${score}${immediate ? " · LUCRO CERTO" : " · hold"}`,
             tag: `tips3x3-enter-er-${id}-${score}-vis`,
           });
-          sendToExtension(row, {
-            score,
-            layOdds: entryOdds,
-            marketId: entry.marketId ?? er?.marketId,
-            runnerId: entry.runnerId,
-            mexchangeUrl: row.eventosRarosMexchangeUrl ?? row.mexchangeUrl,
-            exitMode: "hold",
-            dedupeKey: erKey,
-          });
+          if (isEventosRarosEnabled()) {
+            sendToExtension(row, {
+              score,
+              layOdds: entryOdds,
+              marketId: entry.marketId ?? er?.marketId,
+              runnerId: entry.runnerId,
+              mexchangeUrl: row.eventosRarosMexchangeUrl ?? row.mexchangeUrl,
+              exitMode: "hold",
+              dedupeKey: erKey,
+            });
+          }
         }
       }
     };

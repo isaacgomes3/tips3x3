@@ -2087,6 +2087,18 @@ a {
   color: var(--brand);
 }
 
+.native-betbra-panel {
+  margin-top: 0.25rem;
+}
+
+.native-betbra-ok {
+  color: #8dce6a;
+}
+
+.native-betbra-off {
+  color: #e07a6a;
+}
+
 .config-lead {
   margin: 0 0 0.85rem;
   font-size: 0.8rem;
@@ -2117,6 +2129,89 @@ a {
   color: var(--text);
   font-size: 1rem;
   font-weight: 700;
+}
+
+.users-admin-form {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 0.85rem;
+}
+
+.users-admin-form .config-field input {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.users-admin-msg {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.users-admin-msg.is-up {
+  color: #8dce6a;
+}
+
+.users-admin-msg.is-down {
+  color: #e07a6a;
+}
+
+.users-admin-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.users-admin-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 0.75rem;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+}
+
+.users-admin-list li.is-inactive {
+  opacity: 0.65;
+}
+
+.users-admin-list li > div:first-child {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.users-admin-list strong {
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.users-admin-list em {
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.users-admin-list span {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.users-admin-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
 }
 
 .config-hint {
@@ -2835,6 +2930,198 @@ a {
   letter-spacing: 0.02em;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
   cursor: pointer;
+}
+
+.live-alert-armed-hint {
+  margin: 0;
+  max-width: 100%;
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 196, 77, 0.4);
+  background: rgba(18, 16, 8, 0.96);
+  color: #ffe6a8;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+
+.live-alert-armed-hint strong {
+  color: #ffd76a;
+  font-weight: 800;
+}
+
+/* --- Estatísticas de indicações --- */
+.ind-stats {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.ind-stats-lead {
+  margin: 0;
+  color: var(--muted, #9aa89a);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.ind-stats-section {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.ind-stats-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.ind-stats-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  letter-spacing: 0.01em;
+}
+
+.ind-stats-sub {
+  margin: 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted, #9aa89a);
+}
+
+.ind-stats-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.ind-stats-pills > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.72rem;
+  color: var(--muted, #9aa89a);
+}
+
+.ind-stats-pills > span strong {
+  color: var(--text, #e8f0e8);
+  font-variant-numeric: tabular-nums;
+}
+
+.ind-stats-pills > span.is-green {
+  border-color: rgba(80, 200, 120, 0.35);
+  color: #8dffb0;
+}
+
+.ind-stats-pills > span.is-red {
+  border-color: rgba(255, 92, 77, 0.35);
+  color: #ffb0a8;
+}
+
+.ind-stats-pills > span.is-pending {
+  border-color: rgba(255, 196, 77, 0.35);
+  color: #ffe6a8;
+}
+
+.ind-stats-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.ind-stats-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--bg-elev, rgba(255, 255, 255, 0.03));
+}
+
+.ind-stats-row.is-green {
+  border-color: rgba(80, 200, 120, 0.28);
+}
+
+.ind-stats-row.is-red {
+  border-color: rgba(255, 92, 77, 0.28);
+}
+
+.ind-stats-row-main {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.ind-stats-row-main strong {
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.ind-stats-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--muted, #9aa89a);
+}
+
+.ind-stats-odd {
+  font-variant-numeric: tabular-nums;
+  color: var(--brand, #d9ff00);
+  font-weight: 700;
+}
+
+.ind-stats-date {
+  font-variant-numeric: tabular-nums;
+}
+
+.ind-stats-result {
+  font-weight: 700;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.ind-stats-result.is-green {
+  color: #8dffb0;
+}
+
+.ind-stats-result.is-red {
+  color: #ffb0a8;
+}
+
+.ind-stats-result.is-pending {
+  color: #ffe6a8;
+}
+
+.ind-stats-row > time {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--muted, #9aa89a);
+  font-variant-numeric: tabular-nums;
+  padding-top: 0.15rem;
+}
+
+@media (max-width: 560px) {
+  .ind-stats-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ind-stats-row > time,
+  .ind-stats-row > .ind-stats-result {
+    align-self: flex-start;
+  }
 }
 
 .live-alert-stack {
@@ -5577,7 +5864,7 @@ a {
   }
 
   .lp-hero {
-    padding: 2.25rem 1rem 1.75rem;
+    padding: 1rem 1rem 0.85rem;
   }
 
   .lp-hero-grid,
@@ -5587,8 +5874,40 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .lp-hero-copy h1 {
+    font-size: clamp(1.35rem, 6.5vw, 1.85rem);
+    line-height: 1.08;
+  }
+
+  .lp-hero-sub {
+    margin: 0.5rem 0 0.85rem;
+    font-size: 0.88rem;
+    line-height: 1.4;
+  }
+
+  .lp-kicker {
+    margin-bottom: 0.45rem;
+    font-size: 0.68rem;
+  }
+
+  .lp-hero-cta {
+    gap: 0.5rem;
+  }
+
   .lp-hero-cta .lp-btn {
     width: 100%;
+    padding: 0.72rem 1rem;
+    border-radius: 10px;
+    font-size: 0.9rem;
+  }
+
+  .lp-hero-visual {
+    margin-top: 0.75rem;
+  }
+
+  .lp-dashboard-mock {
+    padding: 0.75rem 0.85rem;
+    border-radius: 14px;
   }
 
   .lp-feat-grid {
@@ -5618,6 +5937,138 @@ a {
   .lp-section {
     padding: 2.75rem 1rem;
   }
+}
+
+/* Telas curtas (celular): hero cabe sem “esticar” a viewport. */
+@media (max-width: 900px) and (max-height: 820px) {
+  .lp-hero-visual,
+  .lp-stats {
+    display: none;
+  }
+
+  .lp-hero {
+    padding-bottom: 0.5rem;
+  }
+}
+
+/* Shell Capacitor: nunca mostrar marketing esticado. */
+html.capacitor-native,
+html.capacitor-native body {
+  overflow-x: hidden;
+  max-width: 100%;
+  /* Fallback se o StatusBar ainda overlay: empurra o conteúdo */
+  padding-top: 0;
+}
+
+html.capacitor-native body {
+  min-height: 100dvh;
+}
+
+html.capacitor-native .lp-hero-visual,
+html.capacitor-native .lp-stats,
+html.capacitor-native .lp-section,
+html.capacitor-native .lp-neon-band,
+html.capacitor-native .lp-footer {
+  display: none !important;
+}
+
+html.capacitor-native .lp-hero {
+  min-height: auto;
+  padding: 1rem max(1rem, env(safe-area-inset-right)) 1rem
+    max(1rem, env(safe-area-inset-left));
+}
+
+html.capacitor-native .sell-login-page {
+  min-height: 100dvh;
+}
+
+html.capacitor-native .sell-login-card {
+  padding: 1.2rem 1.05rem 1.1rem;
+}
+
+html.capacitor-native .sell-login-card h1 {
+  font-size: 1.25rem;
+}
+
+/* Terminal compacto no APK — evita layout “esticado”. */
+html.capacitor-native .app-frame.is-terminal {
+  min-height: 100dvh;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+html.capacitor-native .term-topbar {
+  /* Relógio/status bar — nunca cobrir o menu */
+  padding-top: max(0.5rem, calc(env(safe-area-inset-top, 0px) + 0.35rem));
+  padding-right: max(0.7rem, env(safe-area-inset-right, 0px));
+  padding-bottom: 0.45rem;
+  padding-left: max(0.7rem, env(safe-area-inset-left, 0px));
+  gap: 0.5rem;
+  top: 0;
+}
+
+html.capacitor-native .term-topbar-logo {
+  height: 26px;
+}
+
+html.capacitor-native .term-topbar-right {
+  gap: 0.45rem;
+  font-size: 0.68rem;
+}
+
+html.capacitor-native .term-ext-switch-label {
+  font-size: 0.65rem;
+}
+
+html.capacitor-native .term-sys-status {
+  display: none;
+}
+
+html.capacitor-native .main-pane.is-terminal {
+  padding: 0.65rem max(0.7rem, env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom))
+    max(0.7rem, env(safe-area-inset-left));
+}
+
+html.capacitor-native .term-root {
+  gap: 0.55rem;
+}
+
+html.capacitor-native .term-kpi {
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+}
+
+html.capacitor-native .term-kpi-value {
+  font-size: clamp(1.1rem, 5.5vw, 1.45rem);
+}
+
+html.capacitor-native .term-kpi-row {
+  gap: 0.45rem;
+}
+
+html.capacitor-native .config-panel {
+  max-width: 100%;
+  gap: 0.65rem;
+}
+
+html.capacitor-native .config-card {
+  padding: 0.85rem 0.9rem;
+  border-radius: 0.75rem;
+}
+
+html.capacitor-native .config-card h3 {
+  font-size: 0.88rem;
+}
+
+html.capacitor-native .main-head h2 {
+  font-size: clamp(1.15rem, 5.5vw, 1.45rem);
+}
+
+html.capacitor-native .btn-primary,
+html.capacitor-native .btn-ghost {
+  padding: 0.65rem 0.9rem;
+  font-size: 0.88rem;
 }
 
 @media (max-width: 720px) {
@@ -5673,8 +6124,8 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.65rem 1.25rem;
-  background: rgba(5, 5, 5, 0.88);
+  padding: max(0.65rem, env(safe-area-inset-top, 0px)) 1.25rem 0.65rem;
+  background: rgba(5, 5, 5, 0.96);
   border-bottom: 1px solid rgba(217, 255, 0, 0.1);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -5866,6 +6317,141 @@ a {
   flex-direction: column;
   gap: 0.85rem;
   animation: rise 0.4s ease both;
+}
+
+.term-exchange-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.9rem 1.1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(217, 255, 0, 0.22);
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(217, 255, 0, 0.1), transparent 55%),
+    linear-gradient(145deg, #101310, #0a0c0e);
+}
+
+.term-exchange-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.term-exchange-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.term-exchange-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  flex-shrink: 0;
+}
+
+.term-exchange-status i {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.term-exchange-status i.is-on {
+  background: #9dff4a;
+  box-shadow: 0 0 8px rgba(157, 255, 74, 0.7);
+}
+
+.term-exchange-status i.is-off {
+  background: #ff5c5c;
+}
+
+.term-exchange-balance {
+  display: block;
+  width: 100%;
+  margin-top: 0.15rem;
+  font-size: clamp(1.55rem, 6vw, 2.1rem);
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #f4f7ef;
+  white-space: nowrap;
+}
+
+.term-exchange-sub,
+.term-exchange-meta,
+.term-exchange-error {
+  display: block;
+  width: 100%;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.term-exchange-meta.is-up {
+  color: #9dff4a;
+}
+
+.term-exchange-meta.is-down {
+  color: #ff8a8a;
+}
+
+.term-exchange-error {
+  color: #ff8a8a;
+}
+
+.term-exchange-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.45rem;
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+.term-exchange-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e8ece3;
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-align: center;
+}
+
+.term-exchange-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.term-exchange-btn.is-primary {
+  border-color: rgba(217, 255, 0, 0.35);
+  background: rgba(217, 255, 0, 0.12);
+  color: #eaff8a;
+}
+
+html.capacitor-native .term-exchange-bar {
+  padding: 0.8rem 0.9rem;
+}
+
+html.capacitor-native .term-exchange-balance {
+  font-size: 1.7rem;
 }
 
 .term-kpi-row {

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { isNativeApp } from "@/lib/native-alerts";
 
 const STATS = [
   { value: 120000, prefix: "+", suffix: "", label: "Análises realizadas" },
@@ -229,10 +231,17 @@ function DashboardMock() {
 }
 
 export function LandingPage() {
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [faqOpen, setFaqOpen] = useState<number | null>(0);
   const [statsActive, setStatsActive] = useState(false);
   const statsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isNativeApp()) {
+      router.replace("/login");
+    }
+  }, [router]);
 
   useEffect(() => {
     const el = statsRef.current;

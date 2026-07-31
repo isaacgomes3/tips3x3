@@ -73,6 +73,35 @@ function modelExactScoreProb(opts: {
   return poissonPmf(lh, needH) * poissonPmf(la, needA);
 }
 
+function isSecondHalf(minute: number | null): boolean {
+  return (
+    minute != null &&
+    minute >= EVENTOS_RAROS.secondHalfMinute &&
+    minute <= EVENTOS_RAROS.minute.max
+  );
+}
+
+/** |casa − fora| do placar live. */
+function liveGoalDiff(homeScore: number, awayScore: number): number {
+  return Math.abs(homeScore - awayScore);
+}
+
+/**
+ * Timing do padrão (ainda possível):
+ * - só 2º tempo
+ * - diff ≥ 3 → a qualquer momento no 2T
+ * - diff &lt; 3 → só últimos 10' antes do fim
+ */
+function isPatternTimingOk(
+  minute: number,
+  goalDiff: number,
+  remainingMinutes: number,
+): boolean {
+  if (!isSecondHalf(minute)) return false;
+  if (goalDiff >= EVENTOS_RAROS.minGoalDiffAnytime) return true;
+  return remainingMinutes <= EVENTOS_RAROS.lastMinutesBeforeEnd;
+}
+
 function isTimeBlocked(
   goalsNeeded: number,
   remainingMinutes: number,
@@ -81,7 +110,7 @@ function isTimeBlocked(
   const cfg = EVENTOS_RAROS.time;
   if (goalsNeeded < cfg.minGoalsNeeded) return false;
   if (
-    minute >= EVENTOS_RAROS.minute.min &&
+    isSecondHalf(minute) &&
     goalsNeeded >= cfg.lateMinGoalsHard
   ) {
     return true;
@@ -128,27 +157,28 @@ function bookOk(c: {
 
 /**
  * Gate por placar.
- * - alreadyImpossible: imediato — só live + lay ≥ min (sem liq/gap/late/modelo)
- * - stillPossible: late + time-gate B (+ modelo se disponível) + bookOk
+ * - alreadyImpossible (LUCRO CERTO): prioridade — live + 2º tempo + odd
+ * - stillPossible: 2T + (diff≥3 ou últimos 10') + time-gate B + bookOk (+ modelo)
  */
 function candidateEntryReady(
   c: Omit<EventosRarosCandidate, "entryReady">,
   eventLiveOk: boolean,
-  eventLateOk: boolean,
+  secondHalfOk: boolean,
+  patternTimingOk: boolean,
 ): boolean {
   if (c.settledHit) return false;
 
   if (c.alreadyImpossible && EVENTOS_RAROS.alreadyImpossible.enabled) {
     return (
       eventLiveOk &&
+      secondHalfOk &&
       c.layOdds >= EVENTOS_RAROS.minLayOdds &&
       c.layOdds <= EVENTOS_RAROS.oddsBand.max
     );
   }
 
   if (!bookOk(c)) return false;
-
-  if (!eventLateOk) return false;
+  if (!patternTimingOk) return false;
   if (!c.stillPossible) return false;
   if (!c.timeBlocked) return false;
 
@@ -198,9 +228,13 @@ function buildLiquidityIndicator(
 function buildLateWindowIndicator(
   minute: number | null,
   hasImpossibleEntry: boolean,
+  goalDiff: number | null,
+  patternTimingOk: boolean,
 ): EventosRarosIndicator {
   const m = EVENTOS_RAROS_INDICATOR_META["late-window"];
-  const { min, max } = EVENTOS_RAROS.minute;
+  const sh = EVENTOS_RAROS.secondHalfMinute;
+  const lastN = EVENTOS_RAROS.lastMinutesBeforeEnd;
+  const diffN = EVENTOS_RAROS.minGoalDiffAnytime;
   if (hasImpossibleEntry) {
     return {
       id: "late-window",
@@ -208,7 +242,7 @@ function buildLateWindowIndicator(
       icon: m.icon,
       tone: "good",
       good: true,
-      detail: "LUCRO CERTO · placar já impossível (sem janela late)",
+      detail: "LUCRO CERTO · prioridade · 2º tempo",
       value: minute,
     };
   }
@@ -223,17 +257,30 @@ function buildLateWindowIndicator(
       value: null,
     };
   }
-  const good = minute >= min && minute <= max;
-  const warn = minute >= min - 10 && minute < min;
+  if (!isSecondHalf(minute)) {
+    const warn = minute >= sh - 10;
+    return {
+      id: "late-window",
+      label: m.label,
+      icon: m.icon,
+      tone: tone(false, warn),
+      good: false,
+      detail: `Só 2º tempo (≥${sh}') · agora ${minute}'`,
+      value: minute,
+    };
+  }
+  const diffLabel = goalDiff != null ? `diff ${goalDiff}` : "diff ?";
   return {
     id: "late-window",
     label: m.label,
     icon: m.icon,
-    tone: tone(good, warn),
-    good,
-    detail: good
-      ? `Minuto ${minute}' na janela ${min}–${max}'`
-      : `Minuto ${minute}' fora ${min}–${max}'`,
+    tone: tone(patternTimingOk, isSecondHalf(minute)),
+    good: patternTimingOk,
+    detail: patternTimingOk
+      ? goalDiff != null && goalDiff >= diffN
+        ? `${minute}' 2T · ${diffLabel}≥${diffN} · padrão liberado`
+        : `${minute}' 2T · últimos ${lastN}' · padrão liberado`
+      : `${minute}' 2T · ${diffLabel} · aguarda diff≥${diffN} ou últimos ${lastN}'`,
     value: minute,
   };
 }
@@ -359,7 +406,7 @@ export function emptyEventosRarosSnapshot(): EventosRarosSnapshot {
     goodCount: 0,
     entryReady: false,
     exitPlan: null,
-    summary: "Eventos raros disponível ao vivo (CS lay ≥ 100).",
+    summary: "Eventos raros · 2º tempo · CS lay ≥ 100.",
     blockers: ["Pré-live / sem feed live"],
   };
 }
@@ -394,30 +441,30 @@ export function buildEventosRarosSnapshot(opts: {
       ? Math.max(EVENTOS_RAROS.fullTimeMinute - minute, 1)
       : EVENTOS_RAROS.fullTimeMinute;
 
-  const minuteInWindow =
-    minute != null &&
-    minute >= EVENTOS_RAROS.minute.min &&
-    minute <= EVENTOS_RAROS.minute.max;
-
-  /** Live + placar — basta para placares já impossíveis. */
+  /** Live + placar. */
   const eventLiveOk = isLive && hs != null && as != null;
-
-  /** Late + forma — só para candidatos ainda possíveis. */
-  const eventLateOk =
+  const goalDiff = hs != null && as != null ? liveGoalDiff(hs, as) : null;
+  const secondHalfOk = isSecondHalf(minute);
+  /** Timing do padrão (ainda possível): 2T + (diff≥3 ou últimos 10') + forma. */
+  const patternTimingOk =
     eventLiveOk &&
     minute != null &&
-    minuteInWindow &&
+    goalDiff != null &&
+    isPatternTimingOk(minute, goalDiff, remainingMinutes) &&
     !(projected != null && projected > EVENTOS_RAROS.maxProjectedTotal);
 
+  if (eventLiveOk && minute != null && !secondHalfOk) {
+    blockers.push(`Só 2º tempo (≥${EVENTOS_RAROS.secondHalfMinute}')`);
+  }
   if (
     eventLiveOk &&
-    !eventLateOk &&
-    minute != null &&
-    !minuteInWindow
+    secondHalfOk &&
+    goalDiff != null &&
+    goalDiff < EVENTOS_RAROS.minGoalDiffAnytime &&
+    remainingMinutes > EVENTOS_RAROS.lastMinutesBeforeEnd
   ) {
-    // Só relevante se não houver impossível; senão não bloqueia o snapshot.
     blockers.push(
-      `Minuto fora ${EVENTOS_RAROS.minute.min}–${EVENTOS_RAROS.minute.max}' (só late)`,
+      `Diff ${goalDiff} < ${EVENTOS_RAROS.minGoalDiffAnytime} · só últimos ${EVENTOS_RAROS.lastMinutesBeforeEnd}'`,
     );
   }
   if (
@@ -425,7 +472,7 @@ export function buildEventosRarosSnapshot(opts: {
     projected != null &&
     projected > EVENTOS_RAROS.maxProjectedTotal
   ) {
-    blockers.push(`Projeção alta (~${projected.toFixed(1)}) (só late)`);
+    blockers.push(`Projeção alta (~${projected.toFixed(1)}) (só padrão)`);
   }
 
   const analyzedBase: Array<Omit<EventosRarosCandidate, "entryReady">> = [];
@@ -520,15 +567,32 @@ export function buildEventosRarosSnapshot(opts: {
     });
   }
 
-  analyzedBase.sort((a, b) => b.rarityScore - a.rarityScore);
+  // LUCRO CERTO (alreadyImpossible) sempre na frente.
+  analyzedBase.sort((a, b) => {
+    if (a.alreadyImpossible !== b.alreadyImpossible) {
+      return a.alreadyImpossible ? -1 : 1;
+    }
+    return b.rarityScore - a.rarityScore;
+  });
 
   const analyzed: EventosRarosCandidate[] = analyzedBase.map((c) => ({
     ...c,
-    entryReady: candidateEntryReady(c, eventLiveOk, eventLateOk),
+    entryReady: candidateEntryReady(
+      c,
+      eventLiveOk,
+      secondHalfOk,
+      patternTimingOk,
+    ),
   }));
 
   const entries = analyzed
     .filter((c) => c.entryReady)
+    .sort((a, b) => {
+      if (a.alreadyImpossible !== b.alreadyImpossible) {
+        return a.alreadyImpossible ? -1 : 1;
+      }
+      return b.rarityScore - a.rarityScore;
+    })
     .slice(0, EVENTOS_RAROS.maxEntriesPerEvent);
 
   if (entries.length < analyzed.filter((c) => c.entryReady).length) {
@@ -549,7 +613,12 @@ export function buildEventosRarosSnapshot(opts: {
     bestReady ?? bestImpossible ?? bestPossible ?? top[0] ?? null;
 
   const hasImpossibleEntry = entries.some((e) => e.alreadyImpossible);
-  const lateInd = buildLateWindowIndicator(minute, hasImpossibleEntry);
+  const lateInd = buildLateWindowIndicator(
+    minute,
+    hasImpossibleEntry,
+    goalDiff,
+    patternTimingOk,
+  );
   const liqInd = buildLiquidityIndicator(
     bestReady?.liquidity ?? best?.liquidity ?? 0,
     {
@@ -581,7 +650,7 @@ export function buildEventosRarosSnapshot(opts: {
       blockers.push("Nenhum placar alto ainda possível / impossível");
     }
     if (
-      eventLateOk &&
+      patternTimingOk &&
       bestPossible &&
       entries.length === 0 &&
       bestPossible.stillPossible &&

@@ -36,12 +36,12 @@ export function getPreliveMinScore() {
 }
 
 /**
- * Trade lay → saída back com ~1% da liability.
+ * Trade lay → saída back com ~0,5% da liability (padrão).
  * Prefere lays baixos (ex. 22–32): gap lay→back menor e risco menor.
  * Lay alto (perto de 50) exige odd quase dobrar e liability bem maior.
  */
 export function getTradeConfig(overrides?: { targetProfitPct?: number }) {
-  const fromEnv = Number(process.env.TARGET_PROFIT_PCT ?? 0.01);
+  const fromEnv = Number(process.env.TARGET_PROFIT_PCT ?? 0.005);
   const override = overrides?.targetProfitPct;
   const targetProfitPct =
     override != null && Number.isFinite(override) && override > 0

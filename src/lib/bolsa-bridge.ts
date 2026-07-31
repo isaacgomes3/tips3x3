@@ -4,7 +4,19 @@
  *
  * Caminho robusto: também publica em POST /api/ext/signal (fila 1-sinal)
  * para a extensão pollear com cookie de sessão — painel fechado / mobile ok.
+ *
+ * No APK:
+ * - Eventos raros (hold): Lay via BetBra, sem fila.
+ * - Lay 3x3 (green): Lay + Back alvo via BetBra, sem fila.
  */
+import { isNativeApp } from "@/lib/native-alerts";
+import {
+  executeNativeGreenLay,
+  executeNativeHoldLay,
+  shouldUseNativeGreenLay,
+  shouldUseNativeHoldLay,
+} from "@/lib/betbra/native-lay";
+
 export type Tips3x3AutoEntryPayload = {
   eventId: string;
   eventName?: string;
@@ -14,8 +26,11 @@ export type Tips3x3AutoEntryPayload = {
   marketId?: string;
   runnerId?: string;
   mexchangeUrl?: string;
-  /** hold = sem green (Eventos raros); omitido = extensão decide saída. */
+  /** hold = sem green (Eventos raros); green = Lay+Back (3x3); omitido = extensão. */
   exitMode?: "hold" | "green";
+  targetBackOdds?: number;
+  /** Fração (0.005 = 0,5%). */
+  targetProfitPct?: number;
   /** Chave de dedupe do painel (ex.: eventId:over-2-5) */
   dedupeKey?: string;
 };
@@ -106,6 +121,8 @@ export function publishExtSignalApi(
       runnerId: payload.runnerId || "",
       mexchangeUrl: payload.mexchangeUrl || "",
       exitMode: payload.exitMode || "",
+      targetBackOdds: payload.targetBackOdds ?? null,
+      targetProfitPct: payload.targetProfitPct ?? null,
       at,
       dedupeKey: payload.dedupeKey || `${payload.eventId}:${score}`,
     }),
@@ -114,13 +131,31 @@ export function publishExtSignalApi(
   });
 }
 
-/** Dispara auto-LAY na extensão (odd do painel; saída Back fica com a extensão). */
+/**
+ * Dispara auto-LAY.
+ * - Desktop: fila API + postMessage para a extensão Bolsa Manual.
+ * - APK hold: Lay BetBra. APK green (3x3): Lay+Back BetBra.
+ */
 export function dispatchExtAutoEntry(payload: Tips3x3AutoEntryPayload): boolean {
   if (typeof window === "undefined") return false;
   if (!payload?.eventId || !(Number(payload.layOdds) > 1.01)) return false;
 
-  // Fila API: funciona com painel fechado / outro device com extensão logada.
+  if (shouldUseNativeHoldLay(payload)) {
+    void executeNativeHoldLay({ ...payload, at: Date.now() });
+    return true;
+  }
+
+  if (shouldUseNativeGreenLay(payload)) {
+    void executeNativeGreenLay({ ...payload, at: Date.now() });
+    return true;
+  }
+
+  // Desktop / sinais sem plugin nativo: fila para a extensão no PC.
   publishExtSignalApi(payload);
+
+  if (isNativeApp()) {
+    return true;
+  }
 
   try {
     window.postMessage(
@@ -136,6 +171,8 @@ export function dispatchExtAutoEntry(payload: Tips3x3AutoEntryPayload): boolean 
           runnerId: payload.runnerId || "",
           mexchangeUrl: payload.mexchangeUrl || "",
           exitMode: payload.exitMode || "",
+          targetBackOdds: payload.targetBackOdds ?? null,
+          targetProfitPct: payload.targetProfitPct ?? null,
           at: Date.now(),
         },
       },

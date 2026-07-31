@@ -154,12 +154,32 @@ export async function nativeNotify(opts: {
 export async function configureNativeShell(): Promise<void> {
   if (!isNativeApp()) return;
 
+  try {
+    document.documentElement.classList.add("capacitor-native");
+  } catch {
+    /* ignore */
+  }
+
+  // Landing (/) é marketing desktop — no APK manda para login/painel.
+  try {
+    const path = window.location.pathname;
+    if (path === "/" || path === "") {
+      window.location.replace("/login");
+      return;
+    }
+  } catch {
+    /* ignore */
+  }
+
   await hideNativeSplash();
 
   try {
     const { StatusBar, Style } = await import("@capacitor/status-bar");
+    // Não desenhar o WebView por baixo do relógio / ícones do sistema.
+    await StatusBar.setOverlaysWebView({ overlay: false });
     await StatusBar.setStyle({ style: Style.Dark });
     await StatusBar.setBackgroundColor({ color: "#050505" });
+    await StatusBar.show();
   } catch {
     /* ignore */
   }

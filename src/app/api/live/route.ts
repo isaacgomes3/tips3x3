@@ -18,6 +18,13 @@ import { parseProfitPctQuery } from "@/lib/betbra/config";
 import { getOddsHistory } from "@/lib/betbra/odds-history";
 import { analyzeTeamForm } from "@/lib/fotmob/form";
 import { getFotmobMatchIntel } from "@/lib/fotmob/intel";
+import {
+  listIndications,
+  reconcileAbsentIndications,
+  settleEventIndications,
+  syncEventosRarosIndications,
+} from "@/lib/indications-store";
+import { isFinishedStatus } from "@/lib/live-status";
 
 export const dynamic = "force-dynamic";
 
@@ -161,6 +168,36 @@ export async function GET(request: Request) {
                 teamForm,
                 isLive: true,
               });
+
+              try {
+                syncEventosRarosIndications({
+                  eventId: analysis.eventId,
+                  eventName: analysis.eventName,
+                  home: analysis.home,
+                  away: analysis.away,
+                  minute: liveSnap.minute,
+                  liveScoreLabel: hasLiveScore
+                    ? liveSnap.scoreLabel
+                    : null,
+                  status: liveSnap.status,
+                  finished:
+                    isFinishedStatus(liveSnap.status) ||
+                    isFinishedStatus(liveSnap.matchStatus) ||
+                    eventosRaros.settled,
+                  entries: [
+                    ...eventosRaros.entries,
+                    ...eventosRaros.candidates.filter((c) => c.settledHit),
+                  ].map((c) => ({
+                    label: c.label,
+                    layOdds: c.layOdds,
+                    alreadyImpossible: c.alreadyImpossible,
+                    settledHit: c.settledHit,
+                    entryReady: c.entryReady,
+                  })),
+                });
+              } catch {
+                // histórico não deve derrubar o feed live
+              }
             } catch {
               // mantém qov / eventos raros base
             }
@@ -310,6 +347,39 @@ export async function GET(request: Request) {
         const rank = { entry: 0, abort: 1, watch: 2, info: 3 } as const;
         return rank[a.severity] - rank[b.severity];
       });
+
+    // Jogos costumam sumir do inplay sem status FT — resolve pendentes.
+    const activeIds = new Set(rows.map((r) => String(r.analysis.eventId)));
+    try {
+      const pendingAbsent = listIndications()
+        .filter((i) => i.result === "pending" && !activeIds.has(i.eventId))
+        .slice(0, 8);
+      const seenEvents = new Set<string>();
+      await Promise.all(
+        pendingAbsent.map(async (ind) => {
+          if (seenEvents.has(ind.eventId)) return;
+          seenEvents.add(ind.eventId);
+          const intel = await Promise.race([
+            getFotmobMatchIntel({
+              home: ind.home,
+              away: ind.away,
+            }).catch(() => null),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 3_500)),
+          ]);
+          const score = intel?.scoreLabel?.replace(/\s+/g, "") ?? null;
+          const status = intel?.status ?? "";
+          const looksLive = /\d|ao vivo|in play|HT|1H|2H/i.test(status);
+          const finished =
+            isFinishedStatus(status) || Boolean(score && !looksLive);
+          if (score && finished) {
+            settleEventIndications(ind.eventId, score, { finished: true });
+          }
+        }),
+      );
+      reconcileAbsentIndications(activeIds);
+    } catch {
+      // settle não deve derrubar o feed
+    }
 
     return NextResponse.json({
       generatedAt: new Date().toISOString(),

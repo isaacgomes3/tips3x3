@@ -4,7 +4,8 @@ import type { CapacitorConfig } from "@capacitor/cli";
  * O app carrega o painel em produção (Next.js na VPS).
  * Para dev local: CAPACITOR_SERVER_URL=http://192.168.x.x:3000 npx cap sync android
  */
-const serverUrl = process.env.CAPACITOR_SERVER_URL ?? "https://tips3x3.com";
+/** Login direto — evita landing esticada; /app redireciona se já autenticado. */
+const serverUrl = process.env.CAPACITOR_SERVER_URL ?? "https://tips3x3.com/login";
 
 const config: CapacitorConfig = {
   appId: "com.tips3x3.app",
@@ -37,6 +38,7 @@ const config: CapacitorConfig = {
     StatusBar: {
       style: "DARK",
       backgroundColor: "#050505",
+      overlaysWebView: false,
     },
   },
 };

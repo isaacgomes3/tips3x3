@@ -1,6 +1,6 @@
 # App Android (APK) — Tips3x3
 
-Shell nativo com [Capacitor](https://capacitorjs.com/) que carrega o painel em **https://tips3x3.com** e entrega **notificações locais**, vibração e status bar escura para alertas ENTRAR / gol / fim de jogo.
+Shell nativo com [Capacitor](https://capacitorjs.com/) que carrega **https://tips3x3.com/login** (sem landing) e entrega **notificações locais**, vibração, status bar escura e **Auto Lay Eventos raros** (plugin BetBra).
 
 ## Pré-requisitos
 
@@ -15,11 +15,12 @@ Shell nativo com [Capacitor](https://capacitorjs.com/) que carrega o painel em *
 mobile/
   capacitor.config.ts   # appId, URL do servidor, plugins
   www/                  # splash local (antes do remote load)
-  android/              # projeto Gradle (gerado pelo Capacitor)
-src/lib/native-alerts.ts   # bridge web ↔ notificações nativas
+  android/              # projeto Gradle + plugin BetBra
+src/lib/native-alerts.ts      # bridge web ↔ notificações nativas
+src/lib/betbra/native-lay.ts  # Auto Lay hold no APK
 ```
 
-O código web (`native-alerts`, `useLiveAlerts`) roda **no servidor** — após alterações, faça deploy do Next.js na VPS antes de testar o APK em produção.
+O código web (`native-alerts`, `native-lay`, `useLiveAlerts`) roda **no servidor** — após alterações, faça deploy do Next.js na VPS antes de testar o APK em produção.
 
 ## Primeira configuração
 
@@ -71,6 +72,23 @@ Instale no celular (USB debugging ou envie o arquivo):
 adb install -r mobile\android\app\build\outputs\apk\debug\app-debug.apk
 ```
 
+## Auto Lay no app (BetBra)
+
+O APK executa ordens na Exchange sem depender da extensão Chrome:
+
+- **Lay 3x3** (padrão ligado): Lay entrada + Back saída (green) com lucro alvo **0,5%**
+- **Eventos raros** (padrão desligado): Lay hold, sem green
+
+1. Em **Perfil**, toque em **Conectar BetBra** e faça login na WebView.
+2. Confira status **conectada**.
+3. Em **Alertas/Perfil**, ligue as estratégias desejadas (só 3x3 por defeito).
+4. Ajuste **lucro alvo %** (padrão 0,5% — só 3x3) e **% banca** hold (padrão 99% — Eventos raros).
+5. Ligue **Auto Lay** (topbar).
+
+Arquivos nativos: `BetBraPlugin.java` (`placeLay` / `placeBack`), `BetBraLoginActivity.java`.
+
+Com sessão BetBra, Lay 3x3 e Eventos raros **não** publicam na fila da extensão (evita ordem dupla). QOV ainda pode ir para `/api/ext/signal`.
+
 ## Permissões no celular
 
 Na primeira abertura o app pede:
@@ -115,9 +133,11 @@ Gere um APK novo após essas correções (`npm run mobile:apk`).
 
 ## Limitações atuais
 
-- **App fechado / morto:** notificações dependem do polling do painel aberto ou em segundo plano. Push FCM em background é evolução futura.
-- **Extensão Bolsa:** auto-envio continua via extensão Chrome; no WebView Android não há extensão.
-- **Código web:** `native-alerts` roda no Next.js em produção — faça deploy da VPS para o APK pegar o bridge atualizado.
+- **Tela desligada / app em background profundo:** mesmo com notificações permitidas e “Alertas ativos”, **não há push remoto**. O painel precisa estar vivo (poll ~10s) para detectar o sinal e só então agenda `LocalNotifications`. Com a tela off o WebView congela → nenhum alerta novo. Solução futura: Push FCM server-side.
+- **App fechado / morto:** notificações e Auto Lay dependem do painel aberto / em segundo plano. Push FCM em background é evolução futura.
+- **Green Back (Lay 3x3):** Lay + ordem Back alvo no APK. Match do Back depende da liquidez/mercado.
+- **Sessão BetBra:** se o cookie expirar, reconecte em Config. Sinais com mais de ~45s são ignorados.
+- **Código web:** bridge em produção na VPS — deploy necessário para o APK pegar `native-lay` atualizado.
 
 ## Comandos úteis
 
