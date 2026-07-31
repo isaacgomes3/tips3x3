@@ -5,8 +5,10 @@
  * Caminho robusto: também publica em POST /api/ext/signal (fila 1-sinal)
  * para a extensão pollear com cookie de sessão — painel fechado / mobile ok.
  *
- * No APK (WebView Capacitor) NÃO há extensão Chrome: só a fila HTTP pode
- * chegar a um PC com a Bolsa Manual logada. O postMessage local é inútil.
+ * No WebView puro, postMessage local não chega a content script. A fila HTTP
+ * (/api/ext/signal) serve o executor Bolsa Manual. Se o painel Auto Lay /
+ * Bolsa Exchange já estiver CONECTADO no aparelho, ele mesmo chama a BetBra
+ * (/api/offers) — e pode falhar com INSUFFICIENT_FUNDS (liability > saldo).
  */
 import { isNativeApp } from "@/lib/native-alerts";
 
