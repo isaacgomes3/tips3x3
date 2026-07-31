@@ -116,7 +116,7 @@ Gere um APK novo após essas correções (`npm run mobile:apk`).
 ## Limitações atuais
 
 - **App fechado / morto:** notificações dependem do polling do painel aberto ou em segundo plano. Push FCM em background é evolução futura.
-- **Entrada Lay 3x3 / Bolsa:** o APK **não executa apostas**. Ele só alerta (toast + notificação). A ordem automática exige Chrome no PC com a extensão **Bolsa Manual** logada no mesmo usuário. No WebView Android não existe extensão Chrome; o toggle “Sinal → PC” só publica em `/api/ext/signal` para o desktop claimar (TTL 90s).
+- **Entrada Lay / Bolsa:** o shell Capacitor só carrega o painel. A ordem na BetBra é feita pela **Bolsa Manual / Auto Lay** (painel “BOLSA EXCHANGE”). Quando ela está **CONECTADA**, o Lay é enviado a `POST /api/offers`. Falhas comuns: `MAKE_TRANSFER_REQUEST_ON_ERROR::INSUFFICIENT_FUNDS` (liability do lay > saldo disponível na Exchange — típico em Eventos Raros com odd 100–1000). O toggle “Sinal → PC” publica em `/api/ext/signal` (TTL 90s) quando não há executor local.
 - **Código web:** `native-alerts` / `bolsa-bridge` rodam no Next.js em produção — faça deploy da VPS para o APK pegar o bridge atualizado.
 
 ## Comandos úteis

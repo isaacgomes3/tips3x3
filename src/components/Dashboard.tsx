@@ -1221,7 +1221,7 @@ export function Dashboard() {
             className="term-ext-switch"
             title={
               nativeApp
-                ? "APK só alerta. Com isto ligado, publica o sinal para a extensão Bolsa Manual no PC (mesmo login)."
+                ? "Publica sinal na fila (/api/ext/signal) para Bolsa Manual. Se Auto Lay já estiver CONECTADO no aparelho, a ordem vai direto à BetBra."
                 : "Envio automático via extensão Bolsa Manual"
             }
           >
@@ -1561,9 +1561,12 @@ export function Dashboard() {
             <div className="alertas-ext-bar">
               {nativeApp ? (
                 <p className="alertas-ext-hint alertas-ext-hint--warn">
-                  APK não executa Lay na BetBra. Ela só notifica. A ordem
-                  automática exige Chrome no PC com a extensão Bolsa Manual
-                  (v1.6+) logada no mesmo usuário.
+                  Se o painel Bolsa Exchange estiver CONECTADO com Auto Lay,
+                  a ordem vai para a BetBra (`/api/offers`). Erro
+                  INSUFFICIENT_FUNDS = liability do lay maior que o saldo
+                  disponível na Exchange (comum em placar raro com odd alta).
+                  Sem Bolsa conectada, use este toggle para publicar o sinal
+                  ao PC.
                 </p>
               ) : null}
               <label className="alertas-ext-toggle">
@@ -1705,9 +1708,10 @@ export function Dashboard() {
               </h3>
               {nativeApp ? (
                 <p className="alertas-ext-hint alertas-ext-hint--warn">
-                  Este APK não coloca Lay 3x3 sozinho. Use o PC com a extensão
-                  Bolsa Manual, ou abra a BetBra manualmente pelo botão do
-                  alerta.
+                  Com Bolsa Exchange + Auto Lay conectados, o app tenta o Lay
+                  na BetBra. Se falhar com INSUFFICIENT_FUNDS, reduza a stake /
+                  liability ou transfira saldo para a Exchange. Sem conexão
+                  Bolsa, o sinal só vai para a fila do PC.
                 </p>
               ) : null}
               <label className="alertas-ext-toggle">
