@@ -724,8 +724,15 @@ export function Dashboard() {
     return () => window.removeEventListener("keydown", onKey);
   }, [topNavOpen]);
 
-  const { toasts, dismiss, alertsArmed, armAlerts, extAutoSend, setExtAutoSend } =
-    useLiveAlerts(favorites, live?.rows);
+  const {
+    toasts,
+    dismiss,
+    alertsArmed,
+    armAlerts,
+    extAutoSend,
+    setExtAutoSend,
+    nativeApp,
+  } = useLiveAlerts(favorites, live?.rows);
   const [detailOpen, setDetailOpen] = useState<Record<string, boolean>>({
     trade: true,
     moment: true,
@@ -1210,13 +1217,26 @@ export function Dashboard() {
           </nav>
         </div>
         <div className="term-topbar-right">
-          <label className="term-ext-switch" title="Envio automático via extensão Bolsa Manual">
-            <span className="term-ext-switch-label">Ativar extensão</span>
+          <label
+            className="term-ext-switch"
+            title={
+              nativeApp
+                ? "APK só alerta. Com isto ligado, publica o sinal para a extensão Bolsa Manual no PC (mesmo login)."
+                : "Envio automático via extensão Bolsa Manual"
+            }
+          >
+            <span className="term-ext-switch-label">
+              {nativeApp ? "Sinal → PC" : "Ativar extensão"}
+            </span>
             <input
               type="checkbox"
               checked={!!extAutoSend}
               onChange={(e) => setExtAutoSend(e.target.checked)}
-              aria-label="Ativar extensão"
+              aria-label={
+                nativeApp
+                  ? "Enviar sinal de entrada para a extensão no PC"
+                  : "Ativar extensão"
+              }
             />
             <span className="term-ext-switch-track" aria-hidden />
           </label>
@@ -1539,6 +1559,13 @@ export function Dashboard() {
         {view === "alertas" && (
           <div className="panel-block">
             <div className="alertas-ext-bar">
+              {nativeApp ? (
+                <p className="alertas-ext-hint alertas-ext-hint--warn">
+                  APK não executa Lay na BetBra. Ela só notifica. A ordem
+                  automática exige Chrome no PC com a extensão Bolsa Manual
+                  (v1.6+) logada no mesmo usuário.
+                </p>
+              ) : null}
               <label className="alertas-ext-toggle">
                 <input
                   type="checkbox"
@@ -1546,16 +1573,23 @@ export function Dashboard() {
                   onChange={(e) => setExtAutoSend(e.target.checked)}
                 />
                 <span>
-                  <strong>Auto ENVIAR na extensão</strong>
+                  <strong>
+                    {nativeApp
+                      ? "Publicar sinal para a extensão no PC"
+                      : "Auto ENVIAR na extensão"}
+                  </strong>
                   <em>
-                    No alerta ENTRAR (3-3 / QOV zebra), envia Lay com a odd
-                    do painel e a saída Back pela % da extensão.
+                    {nativeApp
+                      ? "No alerta ENTRAR, envia o sinal à fila do servidor. O PC com Bolsa Manual precisa estar aberto e logado (TTL 90s)."
+                      : "No alerta ENTRAR (3-3 / QOV zebra), envia Lay com a odd do painel e a saída Back pela % da extensão."}
                   </em>
                 </span>
               </label>
               <p className="alertas-ext-hint">
                 {extAutoSend
-                  ? "Ligado — mantenha a extensão Bolsa Manual atualizada (v1.6+) e logada (Lay 3-3 / QOV zebra)."
+                  ? nativeApp
+                    ? "Ligado — APK publica o sinal; a entrada só acontece se a Bolsa Manual no PC claimar a tempo."
+                    : "Ligado — mantenha a extensão Bolsa Manual atualizada (v1.6+) e logada (Lay 3-3 / QOV zebra)."
                   : "Desligado — marque para ligar o envio automático."}
               </p>
             </div>
@@ -1666,7 +1700,16 @@ export function Dashboard() {
             </section>
 
             <section className="config-card">
-              <h3>Extensão Bolsa Manual</h3>
+              <h3>
+                {nativeApp ? "Entrada automática (PC)" : "Extensão Bolsa Manual"}
+              </h3>
+              {nativeApp ? (
+                <p className="alertas-ext-hint alertas-ext-hint--warn">
+                  Este APK não coloca Lay 3x3 sozinho. Use o PC com a extensão
+                  Bolsa Manual, ou abra a BetBra manualmente pelo botão do
+                  alerta.
+                </p>
+              ) : null}
               <label className="alertas-ext-toggle">
                 <input
                   type="checkbox"
@@ -1674,10 +1717,15 @@ export function Dashboard() {
                   onChange={(e) => setExtAutoSend(e.target.checked)}
                 />
                 <span>
-                  <strong>Auto ENVIAR na extensão</strong>
+                  <strong>
+                    {nativeApp
+                      ? "Publicar sinal para a extensão no PC"
+                      : "Auto ENVIAR na extensão"}
+                  </strong>
                   <em>
-                    No alerta ENTRAR (Lay 3-3 / QOV zebra), envia Lay com a
-                    odd do painel. A saída Back usa o lucro % da extensão.
+                    {nativeApp
+                      ? "Publica Lay 3-3 / QOV / Eventos raros na fila. A Bolsa Manual no desktop precisa estar online."
+                      : "No alerta ENTRAR (Lay 3-3 / QOV zebra), envia Lay com a odd do painel. A saída Back usa o lucro % da extensão."}
                   </em>
                 </span>
               </label>

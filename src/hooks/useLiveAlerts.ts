@@ -156,6 +156,9 @@ export function useLiveAlerts(
   const [toasts, setToasts] = useState<LiveToast[]>([]);
   const [alertsArmed, setAlertsArmed] = useState(false);
   const [extAutoSend, setExtAutoSendState] = useState(false);
+  const [nativeApp] = useState(() =>
+    typeof window !== "undefined" ? isNativeApp() : false,
+  );
   const lastScoreRef = useRef<Map<string, string>>(new Map());
   const lastStatusRef = useRef<Map<string, string>>(new Map());
   const enterNotifiedRef = useRef<Set<string>>(new Set());
@@ -192,13 +195,13 @@ export function useLiveAlerts(
         exitMode?: "hold" | "green";
         dedupeKey: string;
       },
-    ): boolean => {
-      if (!isExtAutoSendEnabled()) return false;
+    ): void => {
+      if (!isExtAutoSendEnabled()) return;
       const id = row.analysis.eventId;
-      if (!id || !(opts.layOdds > 1.01)) return false;
-      if (autoSentRef.current.has(opts.dedupeKey)) return false;
+      if (!id || !(opts.layOdds > 1.01)) return;
+      if (autoSentRef.current.has(opts.dedupeKey)) return;
       autoSentRef.current.add(opts.dedupeKey);
-      const ok = dispatchExtAutoEntry({
+      void dispatchExtAutoEntry({
         eventId: id,
         eventName:
           row.analysis.eventName ||
@@ -210,13 +213,14 @@ export function useLiveAlerts(
         mexchangeUrl: opts.mexchangeUrl || row.mexchangeUrl,
         exitMode: opts.exitMode,
         dedupeKey: opts.dedupeKey,
+      }).then((result) => {
+        if (result.ok) {
+          markExtAutoEntryDispatched(opts.dedupeKey);
+        } else {
+          // Falhou (ex.: APK sem fila HTTP) — permite retentar no próximo tick.
+          autoSentRef.current.delete(opts.dedupeKey);
+        }
       });
-      if (ok) {
-        markExtAutoEntryDispatched(opts.dedupeKey);
-      } else {
-        autoSentRef.current.delete(opts.dedupeKey);
-      }
-      return ok;
     },
     [],
   );
@@ -670,5 +674,7 @@ export function useLiveAlerts(
     armAlerts,
     extAutoSend,
     setExtAutoSend,
+    /** true no Capacitor/APK — sem extensão Chrome local */
+    nativeApp,
   };
 }

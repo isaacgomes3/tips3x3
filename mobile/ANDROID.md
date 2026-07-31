@@ -116,8 +116,8 @@ Gere um APK novo após essas correções (`npm run mobile:apk`).
 ## Limitações atuais
 
 - **App fechado / morto:** notificações dependem do polling do painel aberto ou em segundo plano. Push FCM em background é evolução futura.
-- **Extensão Bolsa:** auto-envio continua via extensão Chrome; no WebView Android não há extensão.
-- **Código web:** `native-alerts` roda no Next.js em produção — faça deploy da VPS para o APK pegar o bridge atualizado.
+- **Entrada Lay 3x3 / Bolsa:** o APK **não executa apostas**. Ele só alerta (toast + notificação). A ordem automática exige Chrome no PC com a extensão **Bolsa Manual** logada no mesmo usuário. No WebView Android não existe extensão Chrome; o toggle “Sinal → PC” só publica em `/api/ext/signal` para o desktop claimar (TTL 90s).
+- **Código web:** `native-alerts` / `bolsa-bridge` rodam no Next.js em produção — faça deploy da VPS para o APK pegar o bridge atualizado.
 
 ## Comandos úteis
 
