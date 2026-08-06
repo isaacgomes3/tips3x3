@@ -99,7 +99,7 @@ jobs:
           retention-days: 30
 
       - name: Deploy APK to VPS
-        if: secrets.VPS_SSH_KEY != ''
+        continue-on-error: true
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST || 'tips3x3.com' }}
