@@ -17,6 +17,7 @@ import {
   publishExtSignal,
   type ExtSignalPayload,
 } from "@/lib/ext-signal-queue";
+import { getPanelMarkets } from "@/lib/ext-panel-markets";
 
 export const dynamic = "force-dynamic";
 
@@ -149,11 +150,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   }
 
+  // Mercados ligados nas pills do painel. A extensão espelha isto no HUD, em
+  // vez de manter uma configuração própria que divergia do que o cliente vê.
+  const markets = getPanelMarkets(auth.session.email);
+
   // Crédito zerado: não entrega sinal (a operação geraria taxa sem cobertura).
   if (isWalletBlocked(auth.session.email)) {
     return NextResponse.json({
       ok: true,
       signal: null,
+      markets,
       blocked: true,
       reason: "sem_credito",
       message: "Operação não realizada por falta de crédito.",
@@ -182,6 +188,7 @@ export async function GET(request: Request) {
       return NextResponse.json({
         ok: true,
         signal: null,
+        markets,
         blocked: true,
         reason: "fora_da_faixa_credito",
         message: `Operação não realizada — este filtro exige Crédito ${requiredTier}+.`,
@@ -213,6 +220,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     ok: true,
+    markets,
     signal: signal
       ? {
           id: signal.id,

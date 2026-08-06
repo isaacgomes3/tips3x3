@@ -40,6 +40,7 @@ import {
 } from "@/lib/indications-store";
 import { getSession } from "@/lib/auth/require-session";
 import { publishExtSignalsFromLive } from "@/lib/ext-signal-from-live";
+import { parsePanelKinds, setPanelMarkets } from "@/lib/ext-panel-markets";
 import {
   parseLiveMinute,
   pickTrustedLiveMinute,
@@ -753,6 +754,8 @@ export async function GET(request: Request) {
 
     // Painel com Auto ENVIAR: publica ENTRAR direto na fila da extensão
     // (não depende do localStorage de estratégia / postMessage).
+    // `extMarkets` traz as pills ligadas — é o painel que manda nos mercados
+    // da execução automática; sem o parâmetro, publica tudo (painel antigo).
     let extSignalsPublished = 0;
     const autoExt =
       searchParams.get("autoExt") === "1" ||
@@ -760,9 +763,12 @@ export async function GET(request: Request) {
     if (autoExt) {
       const session = await getSession();
       if (session) {
+        const allowedKinds = parsePanelKinds(searchParams.get("extMarkets"));
+        if (allowedKinds) setPanelMarkets(session.email, allowedKinds);
         extSignalsPublished = publishExtSignalsFromLive(
           session.email,
           rows,
+          allowedKinds,
         ).published;
       }
     }

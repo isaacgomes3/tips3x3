@@ -39,6 +39,7 @@ import {
   type ExchangeDomain,
 } from "@/lib/betbra/exchange-domain";
 import {
+  activeExtSignalKinds,
   getActiveStrategy,
   isEventosRarosEnabled,
   isLay1x1Enabled,
@@ -1299,7 +1300,10 @@ export function Dashboard() {
     setError(null);
     try {
       const profitQ = `&profitPct=${encodeURIComponent(String(targetProfitPct))}`;
-      const autoExtQ = extAutoSend ? "&autoExt=1" : "";
+      // Lê do localStorage na hora do fetch: as pills mudam sem recriar o load.
+      const autoExtQ = extAutoSend
+        ? `&autoExt=1&extMarkets=${encodeURIComponent(activeExtSignalKinds().join(","))}`
+        : "";
       const [oRes, lRes] = await Promise.all([
         fetch(`/api/opportunities?limit=40${profitQ}`, {
           credentials: "include",

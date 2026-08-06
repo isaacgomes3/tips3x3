@@ -3,8 +3,9 @@
  * - Definem quais estratégias aparecem nas pills / na lista de jogos.
  * - Lay 3x3, Eventos raros e Lucro certo são também as chaves de execução do
  *   Auto Lay no APK (sincronizadas por syncAutoLayBackground).
- * - NÃO silenciam o alerta ENTRAR e NÃO filtram a fila da extensão: mercado,
- *   stake e lucro da execução via extensão ficam no HUD dela.
+ * - Mandam também na execução pela extensão: `activeExtSignalKinds()` vai no
+ *   /api/live e o servidor só publica na fila o que estiver ligado aqui.
+ * - NÃO silenciam o alerta ENTRAR. Stake e lucro da extensão ficam no HUD dela.
  */
 
 import type { SignalStrategy } from "@/lib/strategy-priority";
@@ -164,4 +165,21 @@ export function isLay1x1Enabled(): boolean {
 
 export function setLay1x1Enabled(on: boolean) {
   writeFlag(LAY_1X1_KEY, on);
+}
+
+/**
+ * Estratégias liberadas para a execução automática, no formato `kind` da fila
+ * da extensão. É o que o painel manda no /api/live (`extMarkets`).
+ */
+export function activeExtSignalKinds(): string[] {
+  const kinds: string[] = [];
+  if (isLay3x3Enabled()) kinds.push("lay-3x3");
+  if (isLay1x1Enabled()) kinds.push("lay-1x1");
+  if (isQovEnabled()) kinds.push("qov-lay-zebra");
+  if (isEventosRarosEnabled()) kinds.push("eventos-raros");
+  if (isLucroCertoEnabled()) kinds.push("lucro-certo");
+  if (isOver35Enabled()) kinds.push("over-3.5");
+  if (isOver45Enabled()) kinds.push("over-4.5");
+  if (isLayOverLimitPressureEnabled()) kinds.push("lay-over-limit-pressure");
+  return kinds;
 }
