@@ -35,9 +35,11 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
 
   android-apk:
-    name: Build Android APK
+    name: Build & Deploy Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Só faz deploy no push para main (não em PRs)
+    if: github.event_name == 'push'
 
     steps:
       - name: Checkout
@@ -66,15 +68,56 @@ jobs:
         working-directory: mobile/android
         run: chmod +x gradlew
 
+      - name: Extract version from build.gradle
+        id: version
+        working-directory: mobile/android
+        run: |
+          VERSION=$(grep 'versionName' app/build.gradle | head -1 | sed 's/.*versionName "\(.*\)".*/\1/' | tr -d '[:space:]')
+          echo "APK_VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
       - name: Build debug APK
         working-directory: mobile/android
         run: ./gradlew assembleDebug --no-daemon
         env:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false"
 
-      - name: Upload APK artifact
+      - name: Rename APK
+        run: |
+          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk \
+             tips3x3-apk-${{ steps.version.outputs.APK_VERSION }}.apk
+
+      - name: Upload APK artifact (GitHub)
         uses: actions/upload-artifact@v4
         with:
-          name: tips3x3-debug-${{ github.run_number }}
-          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          name: tips3x3-${{ steps.version.outputs.APK_VERSION }}-${{ github.run_number }}
+          path: tips3x3-apk-${{ steps.version.outputs.APK_VERSION }}.apk
           retention-days: 30
+
+      - name: Deploy APK to VPS
+        if: secrets.VPS_SSH_KEY != ''
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST || 'tips3x3.com' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'root' }}
+          APK_VERSION: ${{ steps.version.outputs.APK_VERSION }}
+        run: |
+          # Configura SSH
+          mkdir -p ~/.ssh
+          echo "$VPS_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          APK_FILE="tips3x3-apk-${APK_VERSION}.apk"
+
+          echo "→ Enviando APK v${APK_VERSION} para ${VPS_HOST}..."
+          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
+            "$APK_FILE" \
+            "${VPS_USER}@${VPS_HOST}:/tmp/tips3x3-new.apk"
+
+          echo "→ Registrando release no servidor..."
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
+            "${VPS_USER}@${VPS_HOST}" \
+            "cd /var/www/tips3x3 && node scripts/register-release.js --kind apk --version '${APK_VERSION}' --file /tmp/tips3x3-new.apk && rm /tmp/tips3x3-new.apk"
+
+          echo "✓ APK v${APK_VERSION} publicado no painel admin e downloads de usuários"
