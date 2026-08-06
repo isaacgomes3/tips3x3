@@ -1,0 +1,42 @@
+{
+  "name": "tips3x3",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "mobile:sync": "cd mobile && npm install && npx cap sync android",
+    "mobile:open": "cd mobile && npx cap open android",
+    "mobile:apk": "cd mobile && npm run build:debug"
+  },
+  "dependencies": {
+    "@capacitor/app": "^7.0.1",
+    "@capacitor/core": "^7.2.0",
+    "@capacitor/local-notifications": "^7.0.1",
+    "@capacitor/status-bar": "^7.0.1",
+    "@supabase/supabase-js": "^2.110.8",
+    "chart.js": "^4.5.1",
+    "framer-motion": "^12.43.0",
+    "got-scraping": "^4.2.1",
+    "lucide-react": "^1.27.0",
+    "next": "16.2.12",
+    "playwright-core": "^1.62.0",
+    "qrcode": "^1.5.4",
+    "react": "19.2.4",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.12",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

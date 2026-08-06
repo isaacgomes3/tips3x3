@@ -2407,6 +2407,136 @@ a {
   flex-wrap: wrap;
 }
 
+.ua-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-top: 0.1rem;
+}
+
+.ua-plan-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ua-plan-10  { background: rgba(198,255,0,0.15); color: var(--brand); }
+.ua-plan-50  { background: rgba(110,200,255,0.15); color: #6ec8ff; }
+.ua-plan-250 { background: rgba(177,107,255,0.18); color: #b16bff; }
+.ua-plan-master { background: rgba(255,200,50,0.18); color: #ffc832; }
+.ua-plan-none { background: rgba(255,255,255,0.06); color: var(--muted); }
+
+.ua-balance {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  padding: 0.1rem 0.45rem;
+}
+
+.ua-btn-credit     { color: var(--brand) !important; border-color: var(--brand) !important; }
+.ua-btn-plan       { color: #b16bff !important; border-color: #b16bff !important; }
+.ua-btn-deactivate { color: #ff5c5c !important; border-color: #ff5c5c !important; }
+
+/* ── Modal ── */
+.ua-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.ua-modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: 1.1rem;
+  padding: 1.5rem;
+  width: min(440px, 94vw);
+  display: grid;
+  gap: 1rem;
+}
+
+.ua-modal h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0;
+}
+
+.ua-modal-email {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.ua-modal-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.ua-modal-footer {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.ua-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.ua-plan-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.75rem 0.5rem;
+  border-radius: 0.75rem;
+  border: 1.5px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ua-plan-option:hover {
+  border-color: var(--brand);
+  background: rgba(198,255,0,0.06);
+}
+
+.ua-plan-option.is-selected {
+  border-color: var(--brand);
+  background: rgba(198,255,0,0.12);
+}
+
+.ua-plan-option-name {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ua-plan-option-val {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--brand);
+}
+
 .config-hint {
   margin: 0.65rem 0 0;
   font-size: 0.75rem;
@@ -7974,6 +8104,35 @@ html.capacitor-native .term-exchange-balance {
   box-shadow: 0 4px 14px rgba(198, 255, 0, 0.45);
 }
 
+.cc-badge-featured {
+  position: absolute;
+  top: -0.6rem;
+  right: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.85rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #b16bff, #7c3aed);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: 0 4px 18px rgba(177, 107, 255, 0.55);
+}
+
+.cc-card.is-featured {
+  border-color: rgba(177, 107, 255, 0.55);
+  box-shadow: 0 0 0 1px rgba(177, 107, 255, 0.35), 0 25px 55px -20px rgba(177, 107, 255, 0.35);
+  transform: scale(1.02);
+}
+
+.cc-card.is-featured:hover {
+  border-color: rgba(177, 107, 255, 0.8);
+  box-shadow: 0 0 0 1px rgba(177, 107, 255, 0.5), 0 30px 65px -20px rgba(177, 107, 255, 0.45);
+}
+
 .cc-tone-green {
   border-color: rgba(198, 255, 0, 0.25);
 }
@@ -8175,8 +8334,9 @@ html.capacitor-native .term-exchange-balance {
 }
 
 .cc-tone-purple .cc-cta {
-  background: var(--violet);
-  color: #17092f;
+  background: linear-gradient(90deg, #b16bff, #7c3aed);
+  color: #fff;
+  font-weight: 800;
 }
 
 .cc-cta:hover {
@@ -9414,6 +9574,38 @@ html.capacitor-native .term-exchange-balance {
   min-width: 10rem;
 }
 
+.config-row .config-field span {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+
+.config-row .config-field input {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border-radius: 0.75rem;
+  border: 2px solid rgba(198, 255, 0, 0.35);
+  background: rgba(198, 255, 0, 0.05);
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 700;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  outline: none;
+}
+
+.config-row .config-field input:focus {
+  border-color: var(--brand);
+  background: rgba(198, 255, 0, 0.08);
+  box-shadow: 0 0 0 3px rgba(198, 255, 0, 0.15);
+}
+
+.config-row .config-field input::placeholder {
+  color: var(--muted);
+  font-weight: 400;
+}
+
 /* ---------- Extrato do cliente (AdminStatement) ---------- */
 .stmt-head {
   display: flex;
@@ -9512,4 +9704,477 @@ html.capacitor-native .term-exchange-balance {
   .admin-topbar {
     flex-direction: column;
   }
+}
+
+/* ── Downloads Panel ─────────────────────────────────────────── */
+.dl-root {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.dl-header h2 {
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin: 0 0 0.25rem;
+}
+
+.dl-subtitle {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.dl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.dl-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.dl-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.dl-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 0.75rem;
+  background: rgba(198,255,0,0.1);
+  color: var(--brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dl-card-head h3 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0 0 0.2rem;
+}
+
+.dl-version-badge {
+  display: inline-block;
+  background: rgba(198,255,0,0.15);
+  color: var(--brand);
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  letter-spacing: 0.05em;
+}
+
+.dl-card-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.dl-meta-item {
+  background: rgba(255,255,255,0.04);
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.dl-meta-item span {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.dl-meta-item strong {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.dl-download-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  background: var(--brand);
+  color: #000;
+  font-weight: 800;
+  font-size: 0.85rem;
+  padding: 0.65rem 1rem;
+  border-radius: 0.75rem;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+
+.dl-download-btn:hover { opacity: 0.85; }
+
+.dl-locked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 3rem 1rem;
+  text-align: center;
+}
+
+.dl-lock-icon { font-size: 2.5rem; }
+
+.dl-locked p {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.dl-lock-hint {
+  font-size: 0.78rem !important;
+  color: var(--muted) !important;
+}
+
+.dl-instructions {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 1.25rem;
+}
+
+.dl-instructions h3 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0 0 1rem;
+}
+
+.dl-steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.75rem;
+}
+
+.dl-step-card {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.dl-step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #000;
+  font-size: 0.75rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dl-step-card strong {
+  font-size: 0.82rem;
+  font-weight: 700;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.dl-step-card p {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.dl-step-card code {
+  background: rgba(255,255,255,0.08);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+  font-size: 0.72rem;
+}
+
+/* ── Afiliados Panel ─────────────────────────────────────────── */
+.afl-root {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 780px;
+  padding: 0.25rem 0;
+}
+
+.afl-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--muted);
+  padding: 2rem;
+}
+
+.afl-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.afl-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.85rem;
+  background: rgba(198, 255, 0, 0.12);
+  color: var(--brand);
+  flex-shrink: 0;
+}
+
+.afl-title {
+  margin: 0 0 0.2rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.afl-sub {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.afl-link-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 1.1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.afl-link-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.afl-link-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.afl-link-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.875rem;
+  color: var(--brand);
+  font-weight: 600;
+  word-break: break-all;
+  background: rgba(198, 255, 0, 0.05);
+  border: 1px solid rgba(198, 255, 0, 0.2);
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.75rem;
+}
+
+.afl-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 1rem;
+  border-radius: 0.6rem;
+  border: none;
+  background: var(--brand);
+  color: var(--brand-ink);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+  white-space: nowrap;
+}
+
+.afl-copy-btn:hover {
+  filter: brightness(1.08);
+}
+
+.afl-copy-btn.is-copied {
+  background: var(--success, #22c55e);
+  color: #fff;
+}
+
+.afl-stats {
+  display: flex;
+  gap: 1rem;
+}
+
+.afl-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 1rem;
+  color: var(--muted);
+}
+
+.afl-stat svg {
+  color: var(--brand);
+}
+
+.afl-stat-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+}
+
+.afl-stat-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.afl-table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
+.afl-table-head {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 1rem;
+  padding: 0.65rem 1.25rem;
+  background: var(--surface-raised, rgba(255,255,255,0.03));
+  border-bottom: 1px solid var(--line);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.afl-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+  color: var(--muted);
+  gap: 0.5rem;
+  text-align: center;
+}
+
+.afl-empty p {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.afl-empty-sub {
+  font-size: 0.8rem !important;
+  font-weight: 400 !important;
+  color: var(--muted) !important;
+}
+
+.afl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.afl-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  transition: background 0.15s;
+}
+
+.afl-row:last-child {
+  border-bottom: none;
+}
+
+.afl-row:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.afl-row-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.afl-avatar {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  background: rgba(198, 255, 0, 0.15);
+  color: var(--brand);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.afl-row-info strong {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.afl-row-email {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.afl-row-date {
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.afl-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.afl-badge.is-active {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.afl-badge.is-inactive {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
 }

@@ -16,6 +16,8 @@ import DashboardShell from "@/components/dashboard-hero/DashboardShell";
 import { OddsComparePanel } from "@/components/OddsComparePanel";
 import { IndicationsStats } from "@/components/IndicationsStats";
 import WalletPanel from "@/components/WalletPanel";
+import AfiliadosPanel from "@/components/AfiliadosPanel";
+import DownloadsPanel from "@/components/DownloadsPanel";
 import WalletBalanceBadge from "@/components/WalletBalanceBadge";
 import { useBankrollData } from "@/hooks/useBankrollData";
 import { LayOverLimitPressurePanel } from "@/components/LayOverLimitPressurePanel";
@@ -510,7 +512,9 @@ type NavView =
   | "comparar"
   | "evento"
   | "carteira"
-  | "config";
+  | "config"
+  | "afiliados"
+  | "downloads";
 type StrategyId = SignalStrategy;
 
 function isQovStrategy(strategy: StrategyId): boolean {
@@ -2530,10 +2534,10 @@ export function Dashboard() {
                   }}
                 />
                 <span>
-                  <strong>Lay 1x1</strong>
+                  <strong>Auto Lay 1x1</strong>
                   <em>
-                    Favorito abre 1x0 e mantém pressão → Lay no Placar Exato 1-1.
-                    Odd back fav. 1.05–1.15 · Lay 1.50–3.00 · Somente Lay.
+                    Favorito abre 1×0 e mantém pressão → Lay no Placar Exato 1-1.
+                    Odd back fav. 1.05–1.15 · Lay 15–30 · Somente Lay.
                   </em>
                 </span>
               </label>
@@ -2610,6 +2614,18 @@ export function Dashboard() {
         )}
 
         {view === "carteira" && <WalletPanel />}
+
+        {view === "afiliados" && (
+          <div className="panel-block">
+            <AfiliadosPanel />
+          </div>
+        )}
+
+        {view === "downloads" && (
+          <div className="panel-block">
+            <DownloadsPanel />
+          </div>
+        )}
 
         {view === "config" && (
           <div className="panel-block config-panel">
@@ -3134,12 +3150,14 @@ function GameRow({
   const lucroStrategy = isLucroCertoStrategy(strategy);
   const overStrategy = isOverStrategy(strategy);
   const lolpStrategy = isLayOverLimitPressureStrategy(strategy);
+  const lay1x1Strat = isLay1x1Strategy(strategy);
   const indicatorStrategy =
-    qovStrategy || erStrategy || lucroStrategy || overStrategy || lolpStrategy;
+    qovStrategy || erStrategy || lucroStrategy || overStrategy || lolpStrategy || lay1x1Strat;
   const qov = resolveQov(row, liveRow);
   const er = resolveEventosRaros(row, liveRow);
   const over = resolveOver(row, liveRow, strategy);
   const lolp = lolpStrategy ? resolveLolp(row, liveRow) : null;
+  const lay1x1Live = lay1x1Strat ? (liveRow?.lay1x1 ?? null) : null;
   const lucroEntries =
     er?.entries?.filter((e) => e.entryReady !== false && e.alreadyImpossible) ??
     [];
@@ -3160,6 +3178,8 @@ function GameRow({
         ? `Total · Over ${strategy === "over-3.5" ? "3.5" : "4.5"}`
       : lolpStrategy
         ? `Total · Over ${lolp?.line != null ? lolp.line.toFixed(1) : "Limite"} (pressão)`
+      : lay1x1Strat
+        ? "Placar Correto · 1-1"
       : "Placar Correto · 3-3";
   const marketUrl = qovStrategy
     ? liveRow?.qovMexchangeUrl ?? row.qovMexchangeUrl ?? row.mexchangeUrl
@@ -3177,6 +3197,8 @@ function GameRow({
             row.mexchangeUrl
       : lolpStrategy
         ? lolp?.mexchangeUrl ?? row.mexchangeUrl
+      : lay1x1Strat
+        ? lay1x1Live?.mexchangeUrl ?? row.mexchangeUrl
       : row.mexchangeUrl;
   const marketUrlResolved = withExchangeDomain(marketUrl);
   const live =
@@ -3228,6 +3250,14 @@ function GameRow({
             : lolp && lolp.goodCount >= 1
               ? "ALINHANDO"
               : "LOLP"
+      : lay1x1Strat
+        ? lay1x1Live?.settled
+          ? "ENCERRADO"
+          : lay1x1Live?.entryReady
+            ? "ENTRAR"
+            : lay1x1Live && lay1x1Live.goodCount >= 1
+              ? "ALINHANDO"
+              : "1x1"
       : tradeStatus(plan);
   const statusKey = status.toLowerCase().replace(/[^a-z0-9]+/g, "");
   const [homeGoals, awayGoals] = splitScoreLabel(live?.scoreLabel);
@@ -3370,7 +3400,9 @@ function GameRow({
                 ? er?.backOdds ?? null
                 : overStrategy
                   ? over?.backOdds ?? null
-                  : a.quotes?.back.odds
+                  : lay1x1Strat
+                    ? null
+                    : a.quotes?.back.odds
           }
           backAmount={
             indicatorStrategy ? 0 : a.quotes?.back.amount ?? 0
@@ -3382,7 +3414,9 @@ function GameRow({
                 ? er?.layOdds ?? null
                 : overStrategy
                   ? over?.layOdds ?? null
-                  : a.quotes?.lay.odds
+                  : lay1x1Strat
+                    ? lay1x1Live?.layOdds ?? null
+                    : a.quotes?.lay.odds
           }
           layAmount={
             qovStrategy
@@ -3391,7 +3425,9 @@ function GameRow({
                 ? er?.liquidity ?? 0
                 : overStrategy
                   ? over?.layLiquidity ?? 0
-                  : a.quotes?.lay.amount ?? 0
+                  : lay1x1Strat
+                    ? lay1x1Live?.layLiquidity ?? 0
+                    : a.quotes?.lay.amount ?? 0
           }
           label={marketLabel}
           href={marketUrlResolved}

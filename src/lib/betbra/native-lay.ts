@@ -388,7 +388,7 @@ function setLastResult(result: NativeLayLastResult) {
 }
 
 async function recordIndicationApi(opts: {
-  kind: "lay-3x3" | "eventos-raros" | "lucro-certo";
+  kind: "lay-3x3" | "eventos-raros" | "lucro-certo" | "lay-1x1";
   eventId: string;
   eventName?: string;
   scoreLabel: string;
@@ -420,7 +420,7 @@ async function recordIndicationApi(opts: {
 }
 
 async function reportLayMatched(opts: {
-  kind: "lay-3x3" | "eventos-raros" | "lucro-certo";
+  kind: "lay-3x3" | "eventos-raros" | "lucro-certo" | "lay-1x1";
   eventId: string;
   eventName?: string;
   scoreLabel: string;
@@ -719,7 +719,8 @@ export async function executeNativeHoldLay(
     });
 
     const score = result.score || payload.score || "";
-    const kindLabel = isLucroCerto ? "Lucro certo" : "Eventos raros";
+    const isLay1x1 = payload.kind === "lay-1x1";
+    const kindLabel = isLucroCerto ? "Lucro certo" : isLay1x1 ? "Lay 1x1" : "Eventos raros";
     const msg = result.ok
       ? `Lay ${score} x${result.odds ?? payload.layOdds} · resp R$ ${
           result.liability?.toFixed?.(2) ?? "?"
@@ -738,7 +739,7 @@ export async function executeNativeHoldLay(
 
     if (result.ok) {
       void recordIndicationApi({
-        kind: isLucroCerto ? "lucro-certo" : "eventos-raros",
+        kind: isLucroCerto ? "lucro-certo" : isLay1x1 ? "lay-1x1" : "eventos-raros",
         eventId: String(payload.eventId),
         eventName: payload.eventName,
         scoreLabel: score,
@@ -750,7 +751,7 @@ export async function executeNativeHoldLay(
         },
       });
       void reportLayMatched({
-        kind: isLucroCerto ? "lucro-certo" : "eventos-raros",
+        kind: isLucroCerto ? "lucro-certo" : isLay1x1 ? "lay-1x1" : "eventos-raros",
         eventId: String(payload.eventId),
         eventName: payload.eventName,
         scoreLabel: score,

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Tips3x3</string>
+    <string name="title_activity_main">Tips3x3</string>
+    <string name="package_name">com.tips3x3.app</string>
+    <string name="custom_url_scheme">com.tips3x3.app</string>
+</resources>

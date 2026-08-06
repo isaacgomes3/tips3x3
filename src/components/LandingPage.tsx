@@ -4,64 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Crown, Medal, Star } from "lucide-react";
 import { isNativeApp } from "@/lib/native-alerts";
+import CreditCard from "@/components/dashboard-hero/CreditCard";
 
 const STATS = [
   { value: 120000, prefix: "+", suffix: "", label: "Análises realizadas" },
   { value: 98, prefix: "", suffix: "%", label: "Precisão dos filtros" },
   { value: 24, prefix: "", suffix: "/7", label: "Atualizações" },
   { value: 50, prefix: "+", suffix: "", label: "Ligas monitoradas" },
-];
-
-const PLANS = [
-  {
-    id: "starter",
-    name: "Starter",
-    price: "R$ 39,90",
-    period: "/mês",
-    badge: null as string | null,
-    featured: false,
-    perks: [
-      "Dashboard completo",
-      "Alertas ao vivo",
-      "Pressão em tempo real",
-      "2 estratégias",
-      "Favoritos",
-    ],
-    cta: "COMEÇAR AGORA",
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    price: "R$ 69,90",
-    period: "/mês",
-    badge: "MAIS VENDIDO",
-    featured: true,
-    perks: [
-      "Tudo do Starter",
-      "10 estratégias",
-      "Exportar dados",
-      "Central de banca",
-      "Prioridade em alertas",
-    ],
-    cta: "ATIVAR PRO",
-  },
-  {
-    id: "elite",
-    name: "Elite",
-    price: "R$ 129,90",
-    period: "/mês",
-    badge: "PROFISSIONAL",
-    featured: false,
-    perks: [
-      "Tudo do Pro",
-      "Estratégias ilimitadas",
-      "Acesso à API",
-      "Suporte prioritário",
-      "Onboarding assistido",
-    ],
-    cta: "ATIVAR ELITE",
-  },
 ];
 
 function formatStat(n: number) {
@@ -202,32 +153,66 @@ export function LandingPage() {
       {/* Planos — sem login */}
       <section className="lp-section lp-plans-section" id="planos">
         <div className="lp-section-head">
-          <h2>Planos Premium</h2>
-          <p>Acesso imediato após login. Cancele quando quiser.</p>
+          <h2>Automação Profissional</h2>
+          <p>Adicione crédito e desbloqueie os mercados da sua faixa.</p>
         </div>
-        <div className="lp-plans">
-          {PLANS.map((plan) => (
-            <article
-              key={plan.id}
-              className={`lp-card lp-plan${plan.featured ? " is-featured" : ""}${plan.id === "elite" ? " is-elite" : ""}`}
-            >
-              {plan.badge ? <span className="lp-plan-badge">{plan.badge}</span> : null}
-              <h3>{plan.name}</h3>
-              <p className="lp-plan-price">
-                <strong>{plan.price}</strong>
-                <span>{plan.period}</span>
-              </p>
-              <ul>
-                {plan.perks.map((p) => <li key={p}>{p}</li>)}
-              </ul>
-              <Link
-                href="/login"
-                className={`lp-btn ${plan.featured ? "lp-btn-primary" : "lp-btn-outline"}`}
-              >
-                {plan.cta}
-              </Link>
-            </article>
-          ))}
+        <div className="cc-grid">
+          <CreditCard
+            icon={Star}
+            tier="CRÉDITO 10+"
+            description="Ideal para iniciar sua automação com gestão inteligente."
+            benefits={[
+              "Acesso ao painel de estatísticas",
+              "Acompanhamento das operações ao vivo",
+              "Automação via App e Extensão",
+            ]}
+            markets={["Under 3.5", "Under 4.5", "Under Limite"]}
+            extraBenefits={[
+              "Gestão automática de banca",
+              "Ajuste automático de stake",
+            ]}
+            tone="green"
+            delay={0}
+            unlocked={false}
+            onActivate={() => { window.location.href = "/login?next=%2Fapp%3Fview%3Dwallet"; }}
+          />
+          <CreditCard
+            icon={Medal}
+            tier="CRÉDITO 50+"
+            description="Mais mercados, mais oportunidades e maior poder de automação."
+            benefits={["Todos os benefícios do Crédito 10+"]}
+            markets={["Lay 3x3", "Lay QOV Zebra"]}
+            marketsIntro="Mercados adicionais"
+            extraBenefits={[
+              "Filtros avançados por mercado",
+              "Gestão de banca aprimorada",
+            ]}
+            tone="blue"
+            delay={0.1}
+            unlocked={false}
+            onActivate={() => { window.location.href = "/login?next=%2Fapp%3Fview%3Dwallet"; }}
+          />
+          <CreditCard
+            icon={Crown}
+            tier="CRÉDITO 250+"
+            description="Plano completo para máxima performance."
+            benefits={["Todos os recursos dos planos anteriores"]}
+            markets={[
+              "Eventos Raros · Assertividade 100%",
+              "Lucro Certo · Entrada 0 Risco",
+            ]}
+            marketsIntro="Mercados exclusivos"
+            extraBenefits={[
+              "Gestão profissional de banca",
+              "Prioridade nas atualizações",
+              "Suporte Premium",
+            ]}
+            tone="purple"
+            delay={0.2}
+            unlocked={false}
+            featuredBadge="PREMIUM"
+            onActivate={() => { window.location.href = "/login?next=%2Fapp%3Fview%3Dwallet"; }}
+          />
         </div>
       </section>
     </div>
