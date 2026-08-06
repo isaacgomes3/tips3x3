@@ -4,6 +4,7 @@ import { registerPlugin } from "@capacitor/core";
 import { isNativeApp } from "@/lib/native-alerts";
 import {
   getNativeEventosRarosStake,
+  getNativeLay1x1StakePct,
   getNativeLay3x3StakePct,
   getNativeLucroCertoStake,
   getNativeOver45StakePct,
@@ -187,7 +188,7 @@ export async function syncAutoLayBackground(
       overrides?.lay1x1OddsMax ??
       Math.round(LAY_1X1.oddsBand.max * 100),
     stakeLay1x1Pct:
-      overrides?.stakeLay1x1Pct ?? LAY_1X1.defaultStakePct * 100,
+      overrides?.stakeLay1x1Pct ?? getNativeLay1x1StakePct(),
     qovOn: overrides?.qovOn ?? isQovEnabled(),
     // Nativo trabalha em pontos (5 = 5%); o painel guarda fração.
     stakeLolpPct: overrides?.stakeLolpPct ?? getLolpStakePct() * 100,

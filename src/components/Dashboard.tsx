@@ -84,6 +84,7 @@ import {
   fetchBetBraOffers,
   getCachedBetBraSession,
   getNativeLayLastResult,
+  getNativeLay1x1StakePct,
   getNativeLay3x3StakePct,
   getNativeLucroCertoStake,
   getNativeEventosRarosStake,
@@ -93,6 +94,7 @@ import {
   getNativeReservedLucroCerto,
   openBetBraLogin,
   refreshBetBraSession,
+  setNativeLay1x1StakePct,
   setNativeLay3x3StakePct,
   setNativeLucroCertoStake,
   setNativeEventosRarosStake,
@@ -964,6 +966,7 @@ export function Dashboard() {
   const [nativeLucroCertoStake, setNativeLucroCertoStakeState] = useState(1001);
   const [nativeReservedLc, setNativeReservedLcState] = useState(1001);
   const [nativeLolpStakePct, setNativeLolpStakePctState] = useState(5);
+  const [nativeLay1x1StakePct, setNativeLay1x1StakePctState] = useState(5);
   const [nativeLayLast, setNativeLayLast] = useState<NativeLayLastResult | null>(
     null,
   );
@@ -1189,6 +1192,7 @@ export function Dashboard() {
     setNativeLucroCertoStakeState(getNativeLucroCertoStake());
     setNativeReservedLcState(getNativeReservedLucroCerto());
     setNativeLolpStakePctState(Math.round(getLolpStakePct() * 100));
+    setNativeLay1x1StakePctState(getNativeLay1x1StakePct());
     setNativeLayLast(getNativeLayLastResult());
     if (!native) return;
     void refreshExchangeSnapshot();
@@ -1204,6 +1208,7 @@ export function Dashboard() {
       setNativeLucroCertoStakeState(getNativeLucroCertoStake());
       setNativeReservedLcState(getNativeReservedLucroCerto());
       setNativeLolpStakePctState(Math.round(getLolpStakePct() * 100));
+      setNativeLay1x1StakePctState(getNativeLay1x1StakePct());
       setNativeLayLast(getNativeLayLastResult());
       const cached = getCachedBetBraSession();
       if (cached) setBetBraConnected(Boolean(cached.connected));
@@ -2896,6 +2901,19 @@ export function Dashboard() {
                     setLay1x1On(on);
                     if (nativeApp)
                       void syncAutoLayBackground({ lay1x1On: on });
+                  }}
+                  stake={{
+                    value: nativeLay1x1StakePct,
+                    unit: "%",
+                    step: 1,
+                    min: 1,
+                    max: 25,
+                    onChange: (n) => {
+                      setNativeLay1x1StakePctState(n);
+                      setNativeLay1x1StakePct(n);
+                      if (nativeApp)
+                        void syncAutoLayBackground({ stakeLay1x1Pct: n });
+                    },
                   }}
                 />
               </div>
