@@ -52,6 +52,6 @@ export const LAY_1X1_INDICATOR_META: Record<
   half: { label: "Período", icon: "⏱" },
   pressao: { label: "Pressão fav.", icon: "🔥" },
   favoriteBack: { label: "Back fav.", icon: "★" },
-  oddsBand: { label: "Lay 1.5–3.0", icon: "▣" },
+  oddsBand: { label: "Lay 15–30", icon: "▣" },
   liquidity: { label: "Liquidez", icon: "≡" },
 };

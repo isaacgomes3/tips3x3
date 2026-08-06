@@ -60,7 +60,7 @@ export function Lay1x1Panel({ snapshots = [] }: Lay1x1PanelProps) {
   return (
     <CollapsePanel
       title="Lay 1x1"
-      subtitle={`Favorito 1x0 + pressão → Lay Placar Exato 1-1 · odd ${LAY_1X1.oddsBand.min}–${LAY_1X1.oddsBand.max}`}
+      subtitle={`Favorito 1x0 + pressão → Lay Placar Exato 1-1 · odd lay ${LAY_1X1.oddsBand.min}–${LAY_1X1.oddsBand.max}`}
       open={open}
       onToggle={() => setOpen(!open)}
       badge={badge}
@@ -79,10 +79,10 @@ export function Lay1x1Panel({ snapshots = [] }: Lay1x1PanelProps) {
             <span>Ativar filtro Lay 1x1</span>
           </label>
           <p className="setting-hint">
-            Quando ativo, monitora jogos com favorito vencendo 1x0 e mantendo
-            pressão. No 2º tempo, sinaliza entrada Lay no Placar Exato 1-1 com
-            odd entre {LAY_1X1.oddsBand.min}–{LAY_1X1.oddsBand.max}. Somente
-            Lay — sem Back.
+          Quando ativo, monitora jogos com favorito vencendo 1x0 e mantendo
+          pressão. No 2º tempo, sinaliza entrada Lay no Placar Exato 1-1 com
+          odd lay entre {LAY_1X1.oddsBand.min}–{LAY_1X1.oddsBand.max}. Somente
+          Lay — sem Back.
           </p>
         </div>
 

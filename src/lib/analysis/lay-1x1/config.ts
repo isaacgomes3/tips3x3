@@ -8,12 +8,12 @@
  */
 
 export const LAY_1X1 = {
-  /** Faixa de odd lay para entrada */
+  /** Faixa de odd lay do Placar Exato 1-1 para entrada */
   oddsBand: {
-    min: 1.50,
-    max: 3.00,
-    preferredMin: 1.60,
-    preferredMax: 2.50,
+    min: 15,
+    max: 30,
+    preferredMin: 17,
+    preferredMax: 27,
   },
 
   /**
