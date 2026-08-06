@@ -38,8 +38,7 @@ jobs:
     name: Build & Deploy Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Só faz deploy no push para main (não em PRs)
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout
