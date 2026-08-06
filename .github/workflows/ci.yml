@@ -64,6 +64,10 @@ jobs:
         working-directory: mobile
         run: npx cap sync android
 
+      - name: Create local.properties
+        working-directory: mobile/android
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
       - name: Make gradlew executable
         working-directory: mobile/android
         run: chmod +x gradlew
