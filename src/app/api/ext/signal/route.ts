@@ -21,6 +21,18 @@ import { getPanelMarkets } from "@/lib/ext-panel-markets";
 
 export const dynamic = "force-dynamic";
 
+/** Pausa de segurança: o Auto Lay ativo é exclusivamente o serviço nativo do APK. */
+const EXTENSION_EXECUTION_SUSPENDED = true;
+
+function suspendedResponse() {
+  return NextResponse.json({
+    ok: true,
+    suspended: true,
+    signal: null,
+    message: "Automação pela extensão está temporariamente suspensa. Use o APK.",
+  });
+}
+
 /** Mesmas estratégias de Tips3x3EntryKind (bolsa-bridge). */
 const EXT_SIGNAL_KINDS = new Set([
   "lay-3x3",
@@ -51,6 +63,7 @@ const KIND_TO_MARKET: Record<string, StrategyMarketKey> = {
  * em origem da casa e autentica com tips3x3_session no header).
  */
 export async function POST(request: Request) {
+  if (EXTENSION_EXECUTION_SUSPENDED) return suspendedResponse();
   const auth = await requireSessionFromRequest(request);
   if (!auth.ok) {
     return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
@@ -145,6 +158,7 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
+  if (EXTENSION_EXECUTION_SUSPENDED) return suspendedResponse();
   const auth = await requireSessionFromRequest(request);
   if (!auth.ok) {
     return NextResponse.json({ error: "Não autenticado" }, { status: 401 });

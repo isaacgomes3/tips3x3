@@ -586,7 +586,10 @@ export function recordPlacedIndication(
     if (input.minute != null) existing.minute = input.minute;
     if (layOdds > existing.layOdds) existing.layOdds = layOdds;
     if (userEmail && !existing.userEmail) existing.userEmail = userEmail;
-    if (input.source && !existing.source) existing.source = input.source;
+    // Uma confirmação do APK prevalece sobre uma tentativa anterior da fila
+    // da extensão: a origem exibida deve ser de quem executou a operação.
+    if (input.source === "apk") existing.source = "apk";
+    else if (input.source && !existing.source) existing.source = input.source;
     // Indicação criada pela varredura do sistema nasce sem valor: quando o
     // executor confirma a ordem, é aqui que o valor real entra.
     if (stake != null && !(Number(existing.stake) > 0)) {
@@ -612,7 +615,12 @@ export function recordPlacedIndication(
     } else if (input.event?.type === "cancelled") {
       existing.execStatus = "failed";
     }
-    if (event) applyEvent(existing, event);
+    // Falha da fila da extensão não pertence a um Lay já confirmado no APK.
+    const ignoreExtensionFailure =
+      existing.source === "apk" &&
+      input.source === "extensao" &&
+      input.event?.type === "failed";
+    if (event && !ignoreExtensionFailure) applyEvent(existing, event);
     else if (stake != null && kind === "lay-3x3") existing.layMatched = true;
     data.items = trimItems([...byId.values()]);
     try {

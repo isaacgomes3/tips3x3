@@ -55,6 +55,11 @@ export type LiveToast = {
   strategy?: LiveToastStrategy;
 };
 
+/** Execução pela extensão foi pausada enquanto o APK é o único executor. */
+function isExtensionExecutionSuspended() {
+  return true;
+}
+
 type QovSnap = {
   entryReady?: boolean;
   settled?: boolean;
@@ -293,6 +298,9 @@ export function useLiveAlerts(
         dedupeKey: string;
       },
     ): boolean => {
+      // A execução pela extensão foi suspensa. O APK continua enviando pelo
+      // serviço nativo em segundo plano; este caminho nunca deve duplicá-lo.
+      if (isExtensionExecutionSuspended()) return false;
       if (!isExtAutoSendEnabled()) return false;
       const id = row.analysis.eventId;
       if (!id || !(opts.layOdds > 1.01)) return false;

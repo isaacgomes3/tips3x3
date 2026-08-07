@@ -39,7 +39,6 @@ import {
   type ExchangeDomain,
 } from "@/lib/betbra/exchange-domain";
 import {
-  activeExtSignalKinds,
   getActiveStrategy,
   isEventosRarosEnabled,
   isLay1x1Enabled,
@@ -1300,15 +1299,11 @@ export function Dashboard() {
     setError(null);
     try {
       const profitQ = `&profitPct=${encodeURIComponent(String(targetProfitPct))}`;
-      // Lê do localStorage na hora do fetch: as pills mudam sem recriar o load.
-      const autoExtQ = extAutoSend
-        ? `&autoExt=1&extMarkets=${encodeURIComponent(activeExtSignalKinds().join(","))}`
-        : "";
       const [oRes, lRes] = await Promise.all([
         fetch(`/api/opportunities?limit=40${profitQ}`, {
           credentials: "include",
         }),
-        fetch(`/api/live?limit=40${profitQ}${autoExtQ}`, {
+        fetch(`/api/live?limit=40${profitQ}`, {
           credentials: "include",
         }),
       ]);
@@ -1906,17 +1901,18 @@ export function Dashboard() {
             title={
               nativeApp
                 ? "Auto Lay no app (Lay 3x3 green / Eventos raros hold — requer BetBra)"
-                : "Envio automático via extensão Bolsa Manual"
+                : "Automação pela extensão está suspensa; use o APK"
             }
           >
             <span className="term-ext-switch-label">
-              {nativeApp ? "Auto Lay" : "Ativar extensão"}
+              {nativeApp ? "Auto Lay" : "Extensão suspensa"}
             </span>
             <input
               type="checkbox"
-              checked={!!extAutoSend}
+              checked={nativeApp && !!extAutoSend}
+              disabled={!nativeApp}
               onChange={(e) => setExtAutoSend(e.target.checked)}
-              aria-label={nativeApp ? "Auto Lay" : "Ativar extensão"}
+              aria-label={nativeApp ? "Auto Lay" : "Extensão suspensa"}
             />
             <span className="term-ext-switch-track" aria-hidden />
           </label>
@@ -2389,17 +2385,18 @@ export function Dashboard() {
               <label className="alertas-ext-toggle">
                 <input
                   type="checkbox"
-                  checked={!!extAutoSend}
+                  checked={nativeApp && !!extAutoSend}
+                  disabled={!nativeApp}
                   onChange={(e) => setExtAutoSend(e.target.checked)}
                 />
                 <span>
                   <strong>
-                    {nativeApp ? "Auto Lay" : "Auto ENVIAR na extensão"}
+                    {nativeApp ? "Auto Lay" : "Extensão suspensa"}
                   </strong>
                   <em>
                     {nativeApp
                       ? "Envia ordens na BetBra pelas estratégias ligadas abaixo (3x3 = Lay+Back · Eventos raros = hold)."
-                      : "No alerta ENTRAR das estratégias ligadas, envia Lay (e Back no 3x3) pela extensão."}
+                      : "A automação por extensão está pausada. Para operar automaticamente, use o APK."}
                   </em>
                 </span>
               </label>
