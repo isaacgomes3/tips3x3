@@ -67,6 +67,26 @@ jobs:
         working-directory: mobile/android
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
+      - name: Configure stable APK signing
+        working-directory: mobile/android
+        env:
+          APK_KEYSTORE_BASE64: ${{ secrets.APK_KEYSTORE_BASE64 }}
+          APK_KEYSTORE_PASSWORD: ${{ secrets.APK_KEYSTORE_PASSWORD }}
+          APK_KEY_ALIAS: ${{ secrets.APK_KEY_ALIAS }}
+          APK_KEY_PASSWORD: ${{ secrets.APK_KEY_PASSWORD }}
+        run: |
+          test -n "$APK_KEYSTORE_BASE64"
+          test -n "$APK_KEYSTORE_PASSWORD"
+          test -n "$APK_KEY_ALIAS"
+          test -n "$APK_KEY_PASSWORD"
+          echo "$APK_KEYSTORE_BASE64" | base64 --decode > app/tips3x3-release.jks
+          cat > keystore.properties <<EOF
+          storeFile=app/tips3x3-release.jks
+          storePassword=$APK_KEYSTORE_PASSWORD
+          keyAlias=$APK_KEY_ALIAS
+          keyPassword=$APK_KEY_PASSWORD
+          EOF
+
       - name: Make gradlew executable
         working-directory: mobile/android
         run: chmod +x gradlew

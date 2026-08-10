@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+def signingProperties = new Properties()
+def signingPropertiesFile = rootProject.file('keystore.properties')
+if (signingPropertiesFile.exists()) {
+    signingPropertiesFile.withInputStream { signingProperties.load(it) }
+}
+
 android {
     namespace "com.tips3x3.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -7,8 +13,8 @@ android {
         applicationId "com.tips3x3.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 8
-        versionName "1.7.2"
+        versionCode 9
+        versionName "1.7.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +22,24 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    buildTypes {
+    signingConfigs {
         release {
+            if (signingProperties.isEmpty()) {
+                throw new GradleException('Chave de assinatura do APK não configurada')
+            }
+            storeFile rootProject.file(signingProperties['storeFile'])
+            storePassword signingProperties['storePassword']
+            keyAlias signingProperties['keyAlias']
+            keyPassword signingProperties['keyPassword']
+        }
+    }
+    buildTypes {
+        debug {
+            // O arquivo distribuído é debug, mas usa sempre a chave de release.
+            signingConfig signingConfigs.release
+        }
+        release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
