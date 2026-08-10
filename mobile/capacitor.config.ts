@@ -1,0 +1,35 @@
+import type { CapacitorConfig } from "@capacitor/cli";
+
+const config: CapacitorConfig = {
+  appId: "com.tips3x3.app",
+  appName: "Tips3x3",
+  webDir: "www",
+  server: {
+    url: "https://tips3x3.com",
+    androidScheme: "https",
+    cleartext: false,
+  },
+  android: {
+    allowMixedContent: false,
+    backgroundColor: "#050505",
+  },
+  plugins: {
+    SplashScreen: {
+      launchShowDuration: 1800,
+      launchAutoHide: true,
+      backgroundColor: "#050505",
+      androidSplashResourceName: "splash",
+      showSpinner: false,
+    },
+    LocalNotifications: {
+      smallIcon: "ic_stat_tips3x3",
+      iconColor: "#D9FF00",
+    },
+    StatusBar: {
+      style: "DARK",
+      backgroundColor: "#050505",
+    },
+  },
+};
+
+export default config;
