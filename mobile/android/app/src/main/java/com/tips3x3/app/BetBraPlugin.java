@@ -73,13 +73,15 @@ public class BetBraPlugin extends Plugin {
   @PluginMethod
   public void openLogin(PluginCall call) {
     // Sempre Exchange — login só no sportsbook não gera session-token da Bolsa.
-    String url = call.getString("url", EXCHANGE_URL);
-    if (url == null || url.isEmpty() || url.equals(SITE) || url.equals(SITE + "/")) {
-      url = EXCHANGE_URL;
+    // A conexão é exclusivamente BetBra Exchange e falhas ao abrir a tela
+    // de login voltam à WebView como erro, sem fechar o aplicativo.
+    try {
+      Intent intent = new Intent(getContext(), BetBraLoginActivity.class);
+      intent.putExtra(BetBraLoginActivity.EXTRA_URL, EXCHANGE_URL);
+      startActivityForResult(call, intent, "loginFinished");
+    } catch (Exception e) {
+      call.reject("Não foi possível abrir a conexão BetBra. Tente novamente.");
     }
-    Intent intent = new Intent(getContext(), BetBraLoginActivity.class);
-    intent.putExtra(BetBraLoginActivity.EXTRA_URL, url);
-    startActivityForResult(call, intent, "loginFinished");
   }
 
   @ActivityCallback
