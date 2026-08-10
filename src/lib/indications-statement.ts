@@ -42,6 +42,8 @@ export type StatementRow = {
   entryOdds: number;
   /** Odd do Back que fechou a operação; null = Lay sem Back (hold). */
   exitOdds: number | null;
+  /** Valor efetivamente enviado no Back. */
+  exitStake: number | null;
   /** true = Lay→Back fechado; false = resultado depende do jogo. */
   closed: boolean;
   result: "green" | "red" | "pending";
@@ -107,12 +109,15 @@ function toRow(item: Indication): StatementRow {
   const greenEvent = [...events].reverse().find((e) => e.type === "green");
 
   const closed = Boolean(backEvent);
+  const awaitingBack = item.kind === "lay-3x3" && !closed;
   const result: StatementRow["result"] =
-    item.result === "green" || greenEvent
-      ? "green"
-      : item.result === "red"
-        ? "red"
-        : "pending";
+    awaitingBack
+      ? "pending"
+      : item.result === "green" || greenEvent
+        ? "green"
+        : item.result === "red"
+          ? "red"
+          : "pending";
 
   const stake = positive(item.stake);
   const liability = positive(item.liability);
@@ -145,6 +150,7 @@ function toRow(item: Indication): StatementRow {
     liability,
     entryOdds: Number(item.layOdds),
     exitOdds: positive(backEvent?.odds),
+    exitStake: positive(backEvent?.stake),
     closed,
     result,
     profit,

@@ -194,7 +194,9 @@ export default function AdminStatement({
                           {row.exitOdds != null ? (
                             <>
                               <strong>x{row.exitOdds}</strong>
-                              <span>back</span>
+                              <span>
+                                back{row.exitStake != null ? ` · ${brl(row.exitStake)}` : ""}
+                              </span>
                             </>
                           ) : (
                             <>
@@ -237,7 +239,9 @@ export default function AdminStatement({
 function resultLabel(row: {
   result: "green" | "red" | "pending";
   closed: boolean;
+  strategy: string;
 }) {
+  if (!row.closed && row.strategy === "lay-3x3") return "Back pendente";
   if (row.result === "green") return row.closed ? "Green (back)" : "Green";
   if (row.result === "red") return "Red";
   return "Em jogo";

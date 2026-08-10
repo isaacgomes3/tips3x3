@@ -1149,8 +1149,38 @@ export async function executeNativeGreenLay(
       at: Date.now(),
     });
 
+    const finalBackOdds =
+      Number(backResult.odds) > 1.01 ? Number(backResult.odds) : targetBack;
+    const finalBackStake =
+      Number(backResult.stake) > 0 ? Number(backResult.stake) : backStake;
+    const finalProfit = Math.round((finalStake - finalBackStake) * 100) / 100;
+
+    void recordIndicationApi({
+      kind: "lay-3x3",
+      eventId: String(payload.eventId),
+      eventName: payload.eventName,
+      scoreLabel: score,
+      layOdds: finalOdds,
+      stake: finalStake,
+      liability: finalLiab,
+      expectedProfit: finalProfit,
+      event: backResult.ok
+        ? {
+            type: "back-sent",
+            odds: finalBackOdds,
+            stake: finalBackStake,
+            profit: finalProfit,
+          }
+        : {
+            type: "failed",
+            odds: targetBack,
+            stake: backStake,
+            message: `Back falhou: ${humanizeLayError(backResult.error || "erro")}`,
+          },
+    });
+
     const msg = backResult.ok
-      ? `Lay casado x${finalOdds} R$${finalStake.toFixed(2)} → Back x${targetBack.toFixed(2)} · ${(profitPct * 100).toFixed(1).replace(".", ",")}%`
+      ? `Lay casado x${finalOdds} R$${finalStake.toFixed(2)} → Back x${finalBackOdds.toFixed(2)} R$${finalBackStake.toFixed(2)} · lucro R$${finalProfit.toFixed(2)}`
       : `Lay casado x${finalOdds} · Back falhou: ${humanizeLayError(backResult.error || "erro")}`;
 
     setLastResult({
