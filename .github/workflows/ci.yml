@@ -95,6 +95,18 @@ jobs:
           path: tips3x3-apk-${{ steps.version.outputs.APK_VERSION }}.apk
           retention-days: 30
 
+      - name: Publish APK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="apk-v${{ steps.version.outputs.APK_VERSION }}-${{ github.run_number }}"
+          gh release create "$TAG" \
+            --target "${{ github.sha }}" \
+            --title "Tips3x3 APK v${{ steps.version.outputs.APK_VERSION }}" \
+            --notes "APK gerada automaticamente para publicação." \
+            --prerelease \
+            "tips3x3-apk-${{ steps.version.outputs.APK_VERSION }}.apk"
+
       - name: Deploy APK to VPS
         continue-on-error: true
         env:
