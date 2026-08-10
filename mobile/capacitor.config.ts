@@ -4,7 +4,8 @@ import type { CapacitorConfig } from "@capacitor/cli";
  * O app carrega o painel em produção (Next.js na VPS).
  * Para dev local: CAPACITOR_SERVER_URL=http://192.168.x.x:3000 npx cap sync android
  */
-const serverUrl = process.env.CAPACITOR_SERVER_URL ?? "https://tips3x3.com";
+// Mantém o ponto de entrada estável do APK 1.6.0.
+const serverUrl = process.env.CAPACITOR_SERVER_URL ?? "https://tips3x3.com/login";
 
 const config: CapacitorConfig = {
   appId: "com.tips3x3.app",
@@ -14,6 +15,7 @@ const config: CapacitorConfig = {
     url: serverUrl,
     androidScheme: "https",
     cleartext: false,
+    allowNavigation: ["tips3x3.com", "*.tips3x3.com"],
   },
   android: {
     allowMixedContent: false,
@@ -21,8 +23,9 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: {
-      launchShowDuration: 1800,
+      launchShowDuration: 800,
       launchAutoHide: true,
+      launchFadeOutDuration: 200,
       backgroundColor: "#050505",
       androidSplashResourceName: "splash",
       showSpinner: false,
@@ -34,6 +37,7 @@ const config: CapacitorConfig = {
     StatusBar: {
       style: "DARK",
       backgroundColor: "#050505",
+      overlaysWebView: false,
     },
   },
 };

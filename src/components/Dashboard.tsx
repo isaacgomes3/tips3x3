@@ -21,7 +21,6 @@ import DownloadsPanel from "@/components/DownloadsPanel";
 import WalletBalanceBadge from "@/components/WalletBalanceBadge";
 import { useBankrollData } from "@/hooks/useBankrollData";
 import { LayOverLimitPressurePanel } from "@/components/LayOverLimitPressurePanel";
-import { Lay1x1Panel } from "@/components/Lay1x1Panel";
 import { StrategyConfigRow } from "@/components/StrategyConfigRow";
 import {
   isMarketAllowedForTier,
@@ -2129,15 +2128,6 @@ export function Dashboard() {
                     LOLP
                   </button>
                 ) : null}
-                {lay1x1On ? (
-                  <button
-                    type="button"
-                    className={`pill ${strategy === "lay-1x1" ? "active" : ""}`}
-                    onClick={() => goStrategy("lay-1x1")}
-                  >
-                    Lay 1x1
-                  </button>
-                ) : null}
                 <button
                   type="button"
                   className={`pill ${!onlyLive ? "active" : ""}`}
@@ -2196,14 +2186,6 @@ export function Dashboard() {
               <LayOverLimitPressurePanel />
             ) : null}
 
-            {isLay1x1Strategy(strategy) ? (
-              <Lay1x1Panel
-                snapshots={(live?.rows ?? [])
-                  .map((r) => r.lay1x1)
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  .filter((s): s is any => s != null && !s.settled)}
-              />
-            ) : null}
 
             <div
               className={`match-board ${isLiveOnlyStrategy(strategy) ? "is-over-limite" : ""}`}
@@ -2521,26 +2503,6 @@ export function Dashboard() {
                 </span>
               </label>
 
-              <label className="alertas-ext-toggle">
-                <input
-                  type="checkbox"
-                  checked={lay1x1On}
-                  onChange={(e) => {
-                    const on = e.target.checked;
-                    setLay1x1Enabled(on);
-                    setLay1x1On(on);
-                    if (nativeApp)
-                      void syncAutoLayBackground({ lay1x1On: on });
-                  }}
-                />
-                <span>
-                  <strong>Auto Lay 1x1</strong>
-                  <em>
-                    Favorito abre 1×0 e mantém pressão → Lay no Placar Exato 1-1.
-                    Odd back fav. 1.05–1.15 · Lay 15–30 · Somente Lay.
-                  </em>
-                </span>
-              </label>
               <p className="alertas-ext-hint">
                 {nativeApp
                   ? extAutoSend
@@ -2904,31 +2866,6 @@ export function Dashboard() {
                       setNativeLolpStakePctState(applied);
                       if (nativeApp)
                         void syncAutoLayBackground({ stakeLolpPct: applied });
-                    },
-                  }}
-                />
-                <StrategyConfigRow
-                  icon="⚽"
-                  name="Lay 1x1"
-                  tag="Somente Lay"
-                  checked={lay1x1On}
-                  onToggle={(on) => {
-                    setLay1x1Enabled(on);
-                    setLay1x1On(on);
-                    if (nativeApp)
-                      void syncAutoLayBackground({ lay1x1On: on });
-                  }}
-                  stake={{
-                    value: nativeLay1x1StakePct,
-                    unit: "%",
-                    step: 1,
-                    min: 1,
-                    max: 25,
-                    onChange: (n) => {
-                      setNativeLay1x1StakePctState(n);
-                      setNativeLay1x1StakePct(n);
-                      if (nativeApp)
-                        void syncAutoLayBackground({ stakeLay1x1Pct: n });
                     },
                   }}
                 />

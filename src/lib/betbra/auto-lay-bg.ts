@@ -180,7 +180,7 @@ export async function syncAutoLayBackground(
     lucroCertoOn: overrides?.lucroCertoOn ?? isLucroCertoEnabled(),
     layOverLimitPressureOn:
       overrides?.layOverLimitPressureOn ?? isLayOverLimitPressureEnabled(),
-    lay1x1On: overrides?.lay1x1On ?? isLay1x1Enabled(),
+    lay1x1On: false,
     lay1x1OddsMin:
       overrides?.lay1x1OddsMin ??
       Math.round(LAY_1X1.oddsBand.min * 100),
