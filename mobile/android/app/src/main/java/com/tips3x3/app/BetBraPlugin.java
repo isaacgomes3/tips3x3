@@ -78,7 +78,21 @@ public class BetBraPlugin extends Plugin {
     try {
       Intent intent = new Intent(getContext(), BetBraLoginActivity.class);
       intent.putExtra(BetBraLoginActivity.EXTRA_URL, EXCHANGE_URL);
-      startActivityForResult(call, intent, "loginFinished");
+      Activity activity = getActivity();
+      if (activity == null) {
+        call.reject("A tela do aplicativo não está disponível para abrir a BetBra.");
+        return;
+      }
+      // Abrir diretamente pela Activity evita falhas silenciosas do callback
+      // do Capacitor em páginas hospedadas remotamente.
+      activity.runOnUiThread(() -> {
+        try {
+          activity.startActivity(intent);
+          call.resolve(sessionStatusObject());
+        } catch (Exception e) {
+          call.reject("Não foi possível abrir a conexão BetBra. Tente novamente.");
+        }
+      });
     } catch (Exception e) {
       call.reject("Não foi possível abrir a conexão BetBra. Tente novamente.");
     }
