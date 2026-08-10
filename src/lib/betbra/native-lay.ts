@@ -867,7 +867,6 @@ async function waitNativeLayMatched(opts: {
   const wantEvent = String(opts.eventId || "");
   const wantMarket = String(opts.marketId || "");
   const wantRunner = String(opts.runnerId || "");
-  let everSawOpen = false;
   while (Date.now() < deadline) {
     try {
       const snap = await BetBra.listOffers();
@@ -915,7 +914,6 @@ async function waitNativeLayMatched(opts: {
         // remaining > 0 ⇒ ainda unmatched (nunca tratar como casada).
         if (Number.isFinite(rem) && rem >= 0.01) {
           sawOpenLay = true;
-          everSawOpen = true;
           continue;
         }
         if (
@@ -928,7 +926,6 @@ async function waitNativeLayMatched(opts: {
           status === "created"
         ) {
           sawOpenLay = true;
-          everSawOpen = true;
           continue;
         }
         const statusFilled =
@@ -942,13 +939,12 @@ async function waitNativeLayMatched(opts: {
         }
       }
       if (sawOpenLay) {
-        everSawOpen = true;
         await sleepMs(1500);
         continue;
       }
       if (sawMatched) return true;
-      // Só assume casado se já vimos a oferta aberta e ela sumiu.
-      if (everSawOpen && !sawOpenLay) return true;
+      // Oferta que sumiu pode ter sido cancelada, expirada ou suspensa.
+      // Back só é permitido com status/valor explicitamente correspondidos.
     } catch {
       /* retry */
     }
