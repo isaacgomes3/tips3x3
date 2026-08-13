@@ -23,6 +23,7 @@ public class AutoLayBootReceiver extends BroadcastReceiver {
       Intent service = new Intent(context, AutoLayForegroundService.class);
       service.setAction(AutoLayForegroundService.ACTION_START);
       ContextCompat.startForegroundService(context, service);
+      AutoLayWatchdogReceiver.schedule(context, 120_000L);
     } catch (Exception e) {
       Log.w("AutoLayBoot", "Não foi possível restaurar o monitor: " + e.getMessage());
     }

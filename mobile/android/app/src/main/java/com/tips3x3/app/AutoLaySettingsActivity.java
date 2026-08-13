@@ -86,7 +86,13 @@ public class AutoLaySettingsActivity extends AppCompatActivity {
     subtitle.setPadding(0, dp(6), 0, dp(18));
     root.addView(subtitle);
 
-    autoOn = toggle(root, "Auto Lay em segundo plano", "autoOn", false);
+    autoOn = toggle(
+        root,
+        BuildConfig.SUREBET_ONLY
+            ? "Execução automática Surebet em segundo plano"
+            : "Auto Lay em segundo plano",
+        "autoOn",
+        false);
     if (BuildConfig.SUREBET_ONLY) {
       section(root, "SUREBET");
       surebetPreliveOn = toggle(root, "Pré-live + intervalo", "surebetPreliveOn", true);

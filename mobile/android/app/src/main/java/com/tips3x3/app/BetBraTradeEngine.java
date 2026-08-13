@@ -16,11 +16,17 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -72,6 +78,7 @@ final class BetBraTradeEngine {
       Pattern.compile("^\\d{3,}_[a-f0-9]{8,}$", Pattern.CASE_INSENSITIVE);
 
   private final Context app;
+  private final Map<String, String> surebetMarketIdCache = new ConcurrentHashMap<>();
 
   BetBraTradeEngine(Context context) {
     this.app = context.getApplicationContext();
@@ -559,61 +566,301 @@ final class BetBraTradeEngine {
     return out;
   }
 
-  /** Lista todos os eventos pre-live futuros que a API disponibilizar. */
-  JSONArray listAllPreliveSurebetMarkets() {
-    JSONArray rows = new JSONArray();
-    try {
-      String token = findSessionToken();
-      if (token == null || token.isEmpty()) return rows;
-      long after = System.currentTimeMillis() / 1000L;
-      String marketNames = URLEncoder.encode("Match Odds,Half Time,Half Time Result,First Half Result", "UTF-8");
-      final int pageSize = 100;
-      int offset = 0;
-      Set<String> seenEvents = new HashSet<>();
-      Set<String> seenPageFingerprints = new HashSet<>();
-      while (true) {
-        String url = API + "/events?offset=" + offset + "&per-page=" + pageSize
-            + "&after=" + after
-            + "&sport-ids=15&sort-by=start&sort-direction=asc&en-market-names=" + marketNames
-            + "&market-types=one_x_two&odds-type=DECIMAL&price-depth=3";
-        HttpResult res = httpJson("GET", url, null, token);
-        if (res.code < 200 || res.code >= 300 || res.bodyJson == null) break;
-        JSONArray events = eventPageItems(res.bodyJson);
-        if (events == null || events.length() == 0) break;
+  static final class SurebetScanResult {
+    final JSONArray rows;
+    final int events;
+    final int pages;
 
-        // Some API/proxy failures return the previous page with HTTP 200.  Do not
-        // loop forever, but also do not stop merely because a legitimate page
-        // happens to contain only event ids already seen on an earlier page.
-        String pageFingerprint = eventPageFingerprint(events);
-        if (!seenPageFingerprints.add(pageFingerprint)) break;
-        for (int i = 0; i < events.length(); i++) {
+    SurebetScanResult(JSONArray rows, int events, int pages) {
+      this.rows = rows;
+      this.events = events;
+      this.pages = pages;
+    }
+  }
+
+  /**
+   * Varre todo o catálogo de futebol disponibilizado pela MExchange, sem janela
+   * de data e sem teto artificial de páginas. Inclui pré-live e live; a regra
+   * operacional de minuto continua no ForegroundService.
+   */
+  SurebetScanResult listAllSurebetMarkets() throws Exception {
+    String token = findSessionToken();
+    if (token == null || token.isEmpty()) throw new Exception(exchangeLabel() + " desconectada");
+    String marketNames = URLEncoder.encode(
+        "Match Odds,Half-time Result", "UTF-8");
+    final int pageSize = 100;
+    int offset = 0;
+    int pages = 0;
+    JSONArray rows = new JSONArray();
+    Set<String> seenEvents = new HashSet<>();
+    Set<String> seenPageFingerprints = new HashSet<>();
+    Map<String, JSONObject> inplayByEvent = fetchInplayInfoBestEffort(token);
+    while (true) {
+      String url = API + "/events?offset=" + offset + "&per-page=" + pageSize
+          + "&sport-ids=15&sort-by=start&sort-direction=asc&en-market-names=" + marketNames
+          + "&market-types=one_x_two,other&odds-type=DECIMAL&price-depth=3";
+      HttpResult res = httpJson("GET", url, null, token);
+      if (res.code < 200 || res.code >= 300 || res.bodyJson == null) {
+        throw new Exception(formatApiError(res.body, res.code));
+      }
+      JSONArray events = eventPageItems(res.bodyJson);
+      if (events == null || events.length() == 0) break;
+      pages++;
+      String pageFingerprint = eventPageFingerprint(events);
+      if (!seenPageFingerprints.add(pageFingerprint)) break;
+      for (int i = 0; i < events.length(); i++) {
         JSONObject event = events.optJSONObject(i);
-        if (event == null || event.optBoolean("in-running-flag", false)) continue;
+        if (event == null) continue;
         String eventId = event.optString("id", "");
         if (eventId.isEmpty() || !seenEvents.add(eventId)) continue;
-        String[] kinds = new String[] {"match-odds", "first-half"};
-        for (String kind : kinds) {
+        JSONObject inplay = inplayByEvent.get(eventId);
+        boolean inRunning = event.optBoolean("in-running-flag", false)
+            || event.optBoolean("inRunning", false) || inplay != null;
+        String status = event.optString("status", event.optString("match-status", ""));
+        if (inplay != null) {
+          status = inplay.optString(
+              "inPlayMatchStatus", inplay.optString("status", status));
+        }
+        String normalizedStatus = status.toLowerCase(Locale.ROOT);
+        boolean interval = normalizedStatus.contains("interval")
+            || normalizedStatus.contains("half time") || normalizedStatus.contains("halftime")
+            || normalizedStatus.contains("firsthalfend")
+            || normalizedStatus.contains("first half end")
+            || normalizedStatus.equals("ht") || normalizedStatus.contains("paused")
+            || normalizedStatus.contains("break");
+        String phase = inRunning && !interval ? "live" : "prelive";
+        double minute = inplay != null ? extractEventMinute(inplay) : -1;
+        if (minute < 0) minute = extractEventMinute(event);
+        for (String kind : new String[] {"match-odds", "first-half"}) {
           JSONObject quote = extractSurebetMarketQuote(event, kind);
           if (quote == null) continue;
           JSONObject analysis = new JSONObject();
           analysis.put("eventId", eventId);
-          analysis.put("eventName", event.optString("name", "Partida pre-live"));
+          analysis.put("eventName", event.optString("name", "Partida"));
           analysis.put("start", event.optString("start", ""));
           analysis.put("matchOdds", quote);
           analysis.put("surebetMarketKind", kind);
           JSONObject row = new JSONObject();
           row.put("analysis", analysis);
           row.put("surebetOnly", true);
-          row.put("surebetPhase", "prelive");
+          row.put("surebetPhase", phase);
+          if (inRunning) {
+            JSONObject live = new JSONObject();
+            live.put("status", status);
+            if (minute >= 0) live.put("minute", minute);
+            if (inplay != null) {
+              JSONObject score = inplay.optJSONObject("score");
+              JSONObject homeScore = score != null ? score.optJSONObject("home") : null;
+              JSONObject awayScore = score != null ? score.optJSONObject("away") : null;
+              int homeGoals = parseScoreValue(homeScore != null ? homeScore.opt("score") : null);
+              int awayGoals = parseScoreValue(awayScore != null ? awayScore.opt("score") : null);
+              if (homeGoals >= 0 && awayGoals >= 0) {
+                live.put("homeScore", homeGoals);
+                live.put("awayScore", awayGoals);
+                live.put("scoreLabel", homeGoals + "-" + awayGoals);
+              }
+            }
+            row.put("live", live);
+          }
           rows.put(row);
         }
       }
-        if (!eventPageHasMore(res.bodyJson, offset, events.length(), pageSize)) break;
-        offset += events.length();
+      if (!eventPageHasMore(res.bodyJson, offset, events.length(), pageSize)) break;
+      int nextOffset = offset + events.length();
+      if (nextOffset <= offset) break;
+      offset = nextOffset;
+    }
+    return new SurebetScanResult(rows, seenEvents.size(), pages);
+  }
+
+  /**
+   * A MExchange nao hidrata Half-time Result na listagem. Descobre todos os
+   * eventos paginados e consulta esse book em paralelo, sem limitar a quantidade
+   * de jogos. Roda em executor separado do scanner Match Odds.
+   */
+  SurebetScanResult listAllFirstHalfSurebetMarkets() throws Exception {
+    String token = findSessionToken();
+    if (token == null || token.isEmpty()) throw new Exception(exchangeLabel() + " desconectada");
+    final int pageSize = 100;
+    int offset = 0;
+    int pages = 0;
+    List<JSONObject> allEvents = new ArrayList<>();
+    Set<String> seenEvents = new HashSet<>();
+    Set<String> seenPages = new HashSet<>();
+    while (true) {
+      String url = API + "/events?offset=" + offset + "&per-page=" + pageSize
+          + "&sport-ids=15&sort-by=start&sort-direction=asc"
+          + "&en-market-names=Match%20Odds&market-types=one_x_two"
+          + "&odds-type=DECIMAL&price-depth=1";
+      HttpResult res = httpJson("GET", url, null, token);
+      if (res.code < 200 || res.code >= 300 || res.bodyJson == null) {
+        throw new Exception(formatApiError(res.body, res.code));
+      }
+      JSONArray events = eventPageItems(res.bodyJson);
+      if (events == null || events.length() == 0) break;
+      pages++;
+      if (!seenPages.add(eventPageFingerprint(events))) break;
+      for (int i = 0; i < events.length(); i++) {
+        JSONObject event = events.optJSONObject(i);
+        String eventId = event != null ? event.optString("id", "") : "";
+        if (!eventId.isEmpty() && seenEvents.add(eventId)) allEvents.add(event);
+      }
+      if (!eventPageHasMore(res.bodyJson, offset, events.length(), pageSize)) break;
+      int nextOffset = offset + events.length();
+      if (nextOffset <= offset) break;
+      offset = nextOffset;
+    }
+
+    Map<String, JSONObject> inplayByEvent = fetchInplayInfoBestEffort(token);
+    ExecutorService pool = Executors.newFixedThreadPool(8);
+    List<Future<JSONObject>> futures = new ArrayList<>();
+    for (JSONObject event : allEvents) {
+      futures.add(
+          pool.submit(
+              () -> {
+                String eventId = event.optString("id", "");
+                try {
+                  JSONObject quote = quoteSurebetMarket(token, eventId, "first-half");
+                  return quote != null
+                      ? buildFirstHalfSurebetRow(event, quote, inplayByEvent.get(eventId))
+                      : null;
+                } catch (Exception ignored) {
+                  return null;
+                }
+              }));
+    }
+    pool.shutdown();
+    JSONArray rows = new JSONArray();
+    try {
+      for (Future<JSONObject> future : futures) {
+        try {
+          JSONObject row = future.get();
+          if (row != null) rows.put(row);
+        } catch (Exception ignored) {
+        }
+      }
+    } finally {
+      pool.shutdownNow();
+    }
+    return new SurebetScanResult(rows, seenEvents.size(), pages);
+  }
+
+  private JSONObject buildFirstHalfSurebetRow(
+      JSONObject event, JSONObject quote, JSONObject inplay) throws Exception {
+    String eventId = event.optString("id", "");
+    boolean inRunning = event.optBoolean("in-running-flag", false)
+        || event.optBoolean("inRunning", false) || inplay != null;
+    String status = event.optString("status", event.optString("match-status", ""));
+    if (inplay != null) {
+      status = inplay.optString("inPlayMatchStatus", inplay.optString("status", status));
+    }
+    String normalizedStatus = status.toLowerCase(Locale.ROOT);
+    boolean interval = normalizedStatus.contains("interval")
+        || normalizedStatus.contains("half time") || normalizedStatus.contains("halftime")
+        || normalizedStatus.contains("firsthalfend")
+        || normalizedStatus.contains("first half end")
+        || normalizedStatus.equals("ht") || normalizedStatus.contains("paused")
+        || normalizedStatus.contains("break");
+    double minute = inplay != null ? extractEventMinute(inplay) : -1;
+    if (minute < 0) minute = extractEventMinute(event);
+    JSONObject analysis = new JSONObject();
+    analysis.put("eventId", eventId);
+    analysis.put("eventName", event.optString("name", "Partida"));
+    analysis.put("start", event.optString("start", ""));
+    analysis.put("matchOdds", quote);
+    analysis.put("surebetMarketKind", "first-half");
+    JSONObject row = new JSONObject();
+    row.put("analysis", analysis);
+    row.put("surebetOnly", true);
+    row.put("surebetPhase", inRunning && !interval ? "live" : "prelive");
+    if (inRunning) {
+      JSONObject live = new JSONObject();
+      live.put("status", status);
+      if (minute >= 0) live.put("minute", minute);
+      row.put("live", live);
+    }
+    return row;
+  }
+
+  /** Compatibilidade com o coordenador da variante dupla. */
+  JSONArray listAllPreliveSurebetMarkets() {
+    JSONArray out = new JSONArray();
+    try {
+      JSONArray all = listAllSurebetMarkets().rows;
+      for (int i = 0; i < all.length(); i++) {
+        JSONObject row = all.optJSONObject(i);
+        if (row != null && "prelive".equals(row.optString("surebetPhase"))) out.put(row);
       }
     } catch (Exception ignored) {
     }
-    return rows;
+    return out;
+  }
+
+  private static double extractEventMinute(JSONObject event) {
+    if (event == null) return -1;
+    for (String key : new String[] {
+        "minute", "match-minute", "matchMinute", "elapsed", "time-elapsed",
+        "timeElapsed", "elapsedRegularTime"
+    }) {
+      if (event.has(key) && !event.isNull(key)) {
+        double value = event.optDouble(key, -1);
+        if (value >= 0 && value <= 180) return value;
+        Matcher matcher = Pattern.compile("(\\d{1,3})").matcher(event.optString(key, ""));
+        if (matcher.find()) return Double.parseDouble(matcher.group(1));
+      }
+    }
+    for (String nestedKey : new String[] {"live", "clock", "score"}) {
+      JSONObject nested = event.optJSONObject(nestedKey);
+      double value = nested != null ? extractEventMinute(nested) : -1;
+      if (value >= 0) return value;
+    }
+    String status = event.optString("status", event.optString("match-status", ""));
+    Matcher matcher = Pattern.compile("(?:^|\\D)(\\d{1,3})(?:['′m]|\\D|$)").matcher(status);
+    if (matcher.find()) return Double.parseDouble(matcher.group(1));
+    return -1;
+  }
+
+  private static String exchangeLabel() {
+    return BuildConfig.BOLSA_ONLY ? "Bolsa de Aposta" : "BetBra";
+  }
+
+  private Map<String, JSONObject> fetchInplayInfoBestEffort(String token) {
+    Map<String, JSONObject> out = new HashMap<>();
+    HttpURLConnection conn = null;
+    try {
+      String urlStr = SITE + "/client/api/jumper/feedSports/inplay-info";
+      conn = (HttpURLConnection) new URL(urlStr).openConnection();
+      conn.setConnectTimeout(4_000);
+      conn.setReadTimeout(6_000);
+      conn.setRequestMethod("GET");
+      conn.setRequestProperty("Accept", "application/json");
+      conn.setRequestProperty("Origin", SITE);
+      conn.setRequestProperty("Referer", SITE + "/");
+      conn.setRequestProperty("Cookie", authCookieHeader(urlStr, token));
+      if (conn.getResponseCode() < 200 || conn.getResponseCode() >= 300) return out;
+      JSONArray data = new JSONArray(readStream(conn.getInputStream()));
+      for (int i = 0; i < data.length(); i++) {
+        JSONObject item = data.optJSONObject(i);
+        String eventId = item != null ? item.optString("eventId", "") : "";
+        if (!eventId.isEmpty()) out.put(eventId, item);
+      }
+    } catch (Exception ignored) {
+      // O catalogo principal continua independente deste enriquecimento live.
+    } finally {
+      if (conn != null) conn.disconnect();
+    }
+    return out;
+  }
+
+  private static int parseScoreValue(Object raw) {
+    if (raw == null || raw == JSONObject.NULL) return -1;
+    try {
+      String value = String.valueOf(raw).trim();
+      Matcher matcher = Pattern.compile("\\d+").matcher(value);
+      return matcher.find() ? Integer.parseInt(matcher.group()) : -1;
+    } catch (Exception ignored) {
+      return -1;
+    }
   }
 
   /** Accept the response shapes used by the exchange across API revisions. */
@@ -661,10 +908,10 @@ final class BetBraTradeEngine {
       return next != null && next != JSONObject.NULL && !String.valueOf(next).isEmpty()
           && !"false".equalsIgnoreCase(String.valueOf(next));
     }
-    int total = source.optInt("total", source.optInt("total-count",
-        source.optInt("total_count", source.optInt("totalCount", -1))));
-    if (total >= 0) return offset + count < total;
-    return count >= pageSize;
+    // Nesta MExchange, `total` e a quantidade da pagina e ate paginas
+    // intermediarias podem vir curtas. Sem `hasMore` explicito, a unica prova do
+    // fim e consultar ate receber zero itens; fingerprint evita loop do proxy.
+    return count > 0;
   }
 
   JSONObject getSurebetMarketQuote(String eventId, String marketKind) throws Exception {
@@ -696,6 +943,12 @@ final class BetBraTradeEngine {
   }
 
   private JSONObject quoteSurebetMarket(String token, String eventId, String marketKind) throws Exception {
+    if ("first-half".equals(marketKind)) {
+      String cachedMarketId = surebetMarketIdCache.get(eventId);
+      if (cachedMarketId != null && !cachedMarketId.isEmpty()) {
+        return quoteHydratedSurebetMarket(token, eventId, cachedMarketId, marketKind);
+      }
+    }
     HttpResult res =
         httpJson(
             "GET",
@@ -707,7 +960,29 @@ final class BetBraTradeEngine {
     if (event.has("event") && event.opt("event") instanceof JSONObject) {
       event = event.getJSONObject("event");
     }
-    return extractSurebetMarketQuote(event, marketKind);
+    JSONObject quote = extractSurebetMarketQuote(event, marketKind);
+    if (quote != null || !"first-half".equals(marketKind)) return quote;
+    String marketId = findSurebetMarketId(event, marketKind);
+    if (marketId.isEmpty()) return null;
+    surebetMarketIdCache.put(eventId, marketId);
+    return quoteHydratedSurebetMarket(token, eventId, marketId, marketKind);
+  }
+
+  private JSONObject quoteHydratedSurebetMarket(
+      String token, String eventId, String marketId, String marketKind) throws Exception {
+    HttpResult hydrated =
+        httpJson(
+            "GET",
+            API + "/events/" + eventId + "?odds-type=DECIMAL&market-ids="
+                + URLEncoder.encode(marketId, "UTF-8"),
+            null,
+            token);
+    if (hydrated.code < 200 || hydrated.code >= 300 || hydrated.bodyJson == null) return null;
+    JSONObject hydratedEvent = hydrated.bodyJson;
+    if (hydratedEvent.has("event") && hydratedEvent.opt("event") instanceof JSONObject) {
+      hydratedEvent = hydratedEvent.getJSONObject("event");
+    }
+    return extractSurebetMarketQuote(hydratedEvent, marketKind);
   }
 
   private JSONObject extractSurebetMarketQuote(JSONObject event, String marketKind) throws Exception {
@@ -723,8 +998,8 @@ final class BetBraTradeEngine {
           .replaceAll("\\p{M}+", "").toLowerCase(Locale.ROOT);
       boolean firstHalf = "first-half".equals(marketKind);
       boolean matches = firstHalf
-          ? normalized.equals("half time")
-              || normalized.matches(".*(half time result|first half result|1st half result|resultado.*1.*tempo|intervalo).*" )
+          ? normalized.equals("half time") || normalized.equals("half-time result")
+              || normalized.matches(".*(half[- ]?time result|first half result|1st half result|resultado.*1.*tempo|intervalo).*")
           : normalized.equals("match odds") || normalized.equals("resultado da partida");
       if (matches) {
         market = candidate;
@@ -765,6 +1040,25 @@ final class BetBraTradeEngine {
       result.put(key, leg);
     }
     return result.has("home") && result.has("draw") && result.has("away") ? result : null;
+  }
+
+  private String findSurebetMarketId(JSONObject event, String marketKind) {
+    JSONArray markets = event != null ? event.optJSONArray("markets") : null;
+    if (markets == null) return "";
+    for (int i = 0; i < markets.length(); i++) {
+      JSONObject market = markets.optJSONObject(i);
+      if (market == null) continue;
+      String name = market.optString("name-original", market.optString("name", "")).trim();
+      String normalized = Normalizer.normalize(name, Normalizer.Form.NFD)
+          .replaceAll("\\p{M}+", "").toLowerCase(Locale.ROOT);
+      boolean firstHalf = "first-half".equals(marketKind);
+      boolean matches = firstHalf
+          ? normalized.equals("half time") || normalized.equals("half-time result")
+              || normalized.matches(".*(half[- ]?time result|first half result|1st half result|resultado.*1.*tempo|intervalo).*")
+          : normalized.equals("match odds") || normalized.equals("resultado da partida");
+      if (matches) return market.optString("id", "");
+    }
+    return "";
   }
 
   /** Guarda os identificadores devolvidos no POST para acompanhar exatamente a mesma ordem. */

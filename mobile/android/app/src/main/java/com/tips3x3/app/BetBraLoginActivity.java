@@ -272,6 +272,7 @@ public class BetBraLoginActivity extends AppCompatActivity {
   }
 
   @Override
+  @SuppressLint("MissingSuperCall")
   public void onBackPressed() {
     finishWithToken();
   }

@@ -54,6 +54,7 @@ public class AutoLayForegroundService extends Service {
   // Novo ID: canais Android são imutáveis e atualizações preservam o estado do canal antigo.
   static final String CHANNEL_FG = "tips3x3-autolay-visible-v2";
   static final String CHANNEL_SESSION = "tips3x3-betbra-session-v1";
+  static final String CHANNEL_SUREBET = "tips3x3-surebet-opportunity-v1";
   /** Resultado de ordem (canal próprio — não misturar com ENTRAR). */
   static final String CHANNEL_RESULT = "tips3x3-order-result-v3";
   /**
@@ -72,8 +73,9 @@ public class AutoLayForegroundService extends Service {
   private static final String PREF_SESSION_DROP_NOTIFIED = "betbra_session_drop_notified";
   static final String PREF_SESSION_BLOCKED = "betbra_session_blocked";
   private static final long SESSION_CHECK_MS = 60_000L;
-  private static final long POLL_MS = 10_000L;
-  private static final long PRELIVE_REFRESH_MS = 60_000L;
+  private static final long DEFAULT_POLL_MS = 10_000L;
+  private static final long SUREBET_POLL_MS = 5_000L;
+  private static final long SUREBET_CATALOG_REFRESH_MS = 5_000L;
   private static final String SENT_PREFIX = "sentat:";
   /** Entrada enviada não repete pelas próximas horas (evita reentrada). */
   private static final long SENT_TTL_MS = 6L * 60L * 60L * 1000L;
@@ -81,8 +83,14 @@ public class AutoLayForegroundService extends Service {
   /** true = saldo preso em ops abertas; espera liberar (sem relógio fixo). */
   private static final String PREF_NO_FUNDS_SOFT = "no_funds_soft";
   private static final String PREF_ACTIVE_TRADE = "active_trade_json";
-  private JSONArray cachedPreliveSurebetRows = new JSONArray();
-  private long cachedPreliveSurebetAt = 0L;
+  private JSONArray cachedSurebetRows = new JSONArray();
+  private long cachedSurebetAt = 0L;
+  private int cachedSurebetEvents;
+  private int cachedSurebetPages;
+  private volatile JSONArray cachedFirstHalfRows = new JSONArray();
+  private volatile long cachedFirstHalfAt;
+  private volatile int cachedFirstHalfEvents;
+  private volatile int cachedFirstHalfPages;
   private static final String POST_GOAL_STATE_PREFIX = "post_goal_state:";
   private static final long POST_GOAL_STABILIZATION_MS = 30_000L;
   /** O sinal pertence ao gol recente; depois de 3 min nao pode virar entrada tardia. */
@@ -107,7 +115,9 @@ public class AutoLayForegroundService extends Service {
 
   private final Handler handler = new Handler(Looper.getMainLooper());
   private final ExecutorService io = Executors.newSingleThreadExecutor();
+  private final ExecutorService firstHalfIo = Executors.newSingleThreadExecutor();
   private final AtomicBoolean tickBusy = new AtomicBoolean(false);
+  private final AtomicBoolean firstHalfBusy = new AtomicBoolean(false);
   private PowerManager.WakeLock wakeLock;
   private ConnectivityManager connectivityManager;
   private ConnectivityManager.NetworkCallback networkCallback;
@@ -121,19 +131,39 @@ public class AutoLayForegroundService extends Service {
           if (!RUNNING.get()) return;
           schedulePoll();
           if (!tickBusy.compareAndSet(false, true)) return;
+          prefs(AutoLayForegroundService.this)
+              .edit()
+              .putLong("lastScanStartedAt", System.currentTimeMillis())
+              .apply();
           io.execute(
               () -> {
                 try {
                   pollOnce();
                   consecutivePollFailures = 0;
+                  prefs(AutoLayForegroundService.this)
+                      .edit()
+                      .putLong("lastScanCompletedAt", System.currentTimeMillis())
+                      .putString("lastScanError", "")
+                      .apply();
                 } catch (Exception e) {
                   consecutivePollFailures++;
                   Log.w(TAG, "poll failed: " + e.getMessage());
-                  if (consecutivePollFailures >= 3) {
+                  prefs(AutoLayForegroundService.this)
+                      .edit()
+                      .putLong("lastScanCompletedAt", System.currentTimeMillis())
+                      .putString(
+                          "lastScanError",
+                          e.getMessage() != null ? e.getMessage() : "falha de busca")
+                      .apply();
+                  if (BuildConfig.SUREBET_ONLY) {
+                    updateFgText("Busca Surebet continua - nova tentativa em 5s");
+                  }
+                  else if (consecutivePollFailures >= 3) {
                     updateFgText("Auto Lay · conexão instável · reconectando");
                   }
                 } finally {
                   tickBusy.set(false);
+                  AutoLayWatchdogReceiver.schedule(AutoLayForegroundService.this, 120_000L);
                 }
               });
         }
@@ -232,6 +262,7 @@ public class AutoLayForegroundService extends Service {
     acquireWakeLock();
     handler.removeCallbacks(tick);
     handler.post(tick);
+    AutoLayWatchdogReceiver.schedule(this, 120_000L);
     if (ACTION_TEST.equals(action)) notifyTest();
     return START_STICKY;
   }
@@ -243,7 +274,17 @@ public class AutoLayForegroundService extends Service {
     releaseWakeLock();
     unregisterNetworkCallback();
     io.shutdownNow();
+    firstHalfIo.shutdownNow();
+    if (BuildConfig.SUREBET_ONLY || prefs(this).getBoolean("autoOn", false)) {
+      AutoLayWatchdogReceiver.schedule(this, 15_000L);
+    }
     super.onDestroy();
+  }
+
+  @Override
+  public void onTaskRemoved(Intent rootIntent) {
+    AutoLayWatchdogReceiver.schedule(this, 5_000L);
+    super.onTaskRemoved(rootIntent);
   }
 
   @Override
@@ -255,22 +296,25 @@ public class AutoLayForegroundService extends Service {
     RUNNING.set(false);
     handler.removeCallbacks(tick);
     releaseWakeLock();
-    stopForeground(STOP_FOREGROUND_REMOVE);
+    if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE);
+    else stopForeground(true);
     stopSelf();
   }
 
   private void schedulePoll() {
     handler.removeCallbacks(tick);
-    handler.postDelayed(tick, POLL_MS);
+    handler.postDelayed(tick, BuildConfig.SUREBET_ONLY ? SUREBET_POLL_MS : DEFAULT_POLL_MS);
   }
 
   private void startAsForeground() {
     boolean autoOn = prefs(this).getBoolean("autoOn", false);
     Notification n =
         buildFgNotification(
-            autoOn
-                ? "Auto Lay ativo · tela pode ficar desligada"
-                : "Monitor ativo · Auto Lay desligado");
+            BuildConfig.SUREBET_ONLY
+                ? "Busca contínua · Match Odds + Resultado do 1º Tempo"
+                : autoOn
+                    ? "Auto Lay ativo · tela pode ficar desligada"
+                    : "Monitor ativo · Auto Lay desligado");
     if (Build.VERSION.SDK_INT >= 29) {
       startForeground(NOTIF_FG_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
     } else {
@@ -294,7 +338,10 @@ public class AutoLayForegroundService extends Service {
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
     return new NotificationCompat.Builder(this, CHANNEL_FG)
-        .setContentTitle("Tips3x3 · Auto Lay")
+        .setContentTitle(
+            BuildConfig.SUREBET_ONLY
+                ? "Tips3x3 · Surebet " + (BuildConfig.BOLSA_ONLY ? "Bolsa" : "BetBra")
+                : "Tips3x3 · Auto Lay")
         .setContentText(text)
         .setSmallIcon(R.drawable.ic_stat_tips3x3)
         .setContentIntent(pi)
@@ -324,8 +371,14 @@ public class AutoLayForegroundService extends Service {
     NotificationManager nm = getSystemService(NotificationManager.class);
     if (nm == null) return;
     NotificationChannel fg =
-        new NotificationChannel(CHANNEL_FG, "Auto Lay ativo", NotificationManager.IMPORTANCE_DEFAULT);
-    fg.setDescription("Mantém o Auto Lay a operar com a tela desligada");
+        new NotificationChannel(
+            CHANNEL_FG,
+            BuildConfig.SUREBET_ONLY ? "Busca Surebet ativa" : "Auto Lay ativo",
+            NotificationManager.IMPORTANCE_DEFAULT);
+    fg.setDescription(
+        BuildConfig.SUREBET_ONLY
+            ? "Mantém a busca Surebet ativa com a tela desligada"
+            : "Mantém o Auto Lay a operar com a tela desligada");
     fg.setSound(null, null);
     fg.enableVibration(false);
     fg.setShowBadge(false);
@@ -351,6 +404,18 @@ public class AutoLayForegroundService extends Service {
     session.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
     if (sound != null) session.setSound(sound, attrs);
     nm.createNotificationChannel(session);
+
+    NotificationChannel surebet =
+        new NotificationChannel(
+            CHANNEL_SUREBET, "Oportunidades Surebet", NotificationManager.IMPORTANCE_HIGH);
+    surebet.setDescription("Match Odds e Resultado do 1º Tempo com arbitragem detectada");
+    surebet.enableVibration(true);
+    surebet.setVibrationPattern(new long[] {0, 100, 60, 100, 60, 220});
+    surebet.enableLights(true);
+    surebet.setLightColor(COLOR_GREEN);
+    surebet.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+    if (sound != null) surebet.setSound(sound, attrs);
+    nm.createNotificationChannel(surebet);
 
     if (BuildConfig.SUREBET_ONLY) return;
 
@@ -435,6 +500,56 @@ public class AutoLayForegroundService extends Service {
     handler.post(tick);
   }
 
+  private void scheduleFirstHalfScan() {
+    if (!BuildConfig.SUREBET_ONLY || firstHalfIo.isShutdown()) return;
+    if (System.currentTimeMillis() - cachedFirstHalfAt < SUREBET_CATALOG_REFRESH_MS) return;
+    if (!firstHalfBusy.compareAndSet(false, true)) return;
+    firstHalfIo.execute(
+        () -> {
+          try {
+            BetBraTradeEngine.SurebetScanResult scan =
+                engine.listAllFirstHalfSurebetMarkets();
+            cachedFirstHalfRows = scan.rows;
+            cachedFirstHalfEvents = scan.events;
+            cachedFirstHalfPages = scan.pages;
+            cachedFirstHalfAt = System.currentTimeMillis();
+          } catch (Exception error) {
+            Log.w(TAG, "first-half scan: " + error.getMessage());
+          } finally {
+            firstHalfBusy.set(false);
+          }
+        });
+  }
+
+  private static void appendSurebetRowsDeduplicated(JSONArray target, JSONArray source) {
+    if (target == null || source == null) return;
+    Set<String> seen = new HashSet<>();
+    for (int i = 0; i < target.length(); i++) {
+      JSONObject row = target.optJSONObject(i);
+      JSONObject analysis = row != null ? row.optJSONObject("analysis") : null;
+      if (analysis != null) {
+        seen.add(
+            analysis.optString("eventId", "")
+                + ":"
+                + analysis.optString("surebetMarketKind", "match-odds"));
+      }
+    }
+    JSONArray snapshot;
+    try {
+      snapshot = new JSONArray(source.toString());
+    } catch (Exception ignored) {
+      return;
+    }
+    for (int i = 0; i < snapshot.length(); i++) {
+      JSONObject row = snapshot.optJSONObject(i);
+      JSONObject analysis = row != null ? row.optJSONObject("analysis") : null;
+      if (analysis == null) continue;
+      String key = analysis.optString("eventId", "")
+          + ":" + analysis.optString("surebetMarketKind", "match-odds");
+      if (seen.add(key)) target.put(row);
+    }
+  }
+
   /** Percorre todas as paginas live com deduplicacao e protecao contra loop. */
   private JSONArray fetchAllLiveRows(
       String apiBase, float profitPoints, float lolpProfitPoints) throws Exception {
@@ -504,8 +619,10 @@ public class AutoLayForegroundService extends Service {
     }
 
     checkBetBraSessionDrop();
-    boolean hasSession =
-        autoOn && !p.getBoolean(PREF_SESSION_BLOCKED, false) && engine.hasSession();
+    boolean sessionAvailable =
+        !p.getBoolean(PREF_SESSION_BLOCKED, false) && engine.hasSession();
+    /** Scanner e alertas ficam ativos; autoOn autoriza somente enviar apostas. */
+    boolean hasSession = autoOn && sessionAvailable;
     float profitPoints = p.getFloat("profitPctPoints", 0.5f);
     float stake3x3 = p.getFloat("stakeLay3x3Pct", 20f);
     float stakeFixedEr = p.getFloat("stakeFixedEr", DEFAULT_STAKE_FIXED_ER);
@@ -536,52 +653,35 @@ public class AutoLayForegroundService extends Service {
     }
     boolean greenBusy = !BuildConfig.SUREBET_ONLY && hasOpenGreenTrade();
 
-    JSONArray rows = fetchAllLiveRows(apiBase, profitPoints, lolpProfitPoints);
-    if (rows == null) {
-      updateFgText("Auto Lay · a monitorar (sem rows)");
-      return;
-    }
-
-    if (matchOddsSurebetOn && hasSession) {
+    JSONArray rows;
+    if (BuildConfig.SUREBET_ONLY) {
       long now = System.currentTimeMillis();
-      if (now - cachedPreliveSurebetAt >= PRELIVE_REFRESH_MS) {
-        cachedPreliveSurebetRows = engine.listAllPreliveSurebetMarkets();
-        cachedPreliveSurebetAt = now;
-      }
-      for (int i = 0; i < cachedPreliveSurebetRows.length(); i++) {
-        JSONObject preliveRow = cachedPreliveSurebetRows.optJSONObject(i);
-        if (preliveRow != null) rows.put(preliveRow);
-      }
-      int liveCount = Math.max(0, rows.length() - cachedPreliveSurebetRows.length());
-      for (int i = 0; i < liveCount; i++) {
-        JSONObject liveRow = rows.optJSONObject(i);
-        JSONObject liveAnalysis = liveRow != null ? liveRow.optJSONObject("analysis") : null;
-        if (liveAnalysis == null) continue;
-        JSONObject snap = liveRow.optJSONObject("live");
-        String status = snap != null ? snap.optString("status", "") : "";
-        String normalizedStatus = status.toLowerCase(Locale.ROOT);
-        boolean interval = normalizedStatus.contains("interval")
-            || normalizedStatus.contains("half time") || normalizedStatus.equals("ht")
-            || normalizedStatus.contains("paused");
-        liveRow.put("surebetPhase", interval ? "prelive" : "live");
-        String eventId = liveAnalysis.optString("eventId", "");
-        JSONObject firstHalf = engine.getSurebetMarketQuote(eventId, "first-half");
-        if (firstHalf != null) {
-          JSONObject halfAnalysis = new JSONObject(liveAnalysis.toString());
-          halfAnalysis.put("matchOdds", firstHalf);
-          halfAnalysis.put("surebetMarketKind", "first-half");
-          JSONObject halfRow = new JSONObject();
-          halfRow.put("analysis", halfAnalysis);
-          halfRow.put("live", snap);
-          halfRow.put("surebetOnly", true);
-          halfRow.put("surebetPhase", interval ? "prelive" : "live");
-          rows.put(halfRow);
+      if (sessionAvailable && now - cachedSurebetAt >= SUREBET_CATALOG_REFRESH_MS) {
+        try {
+          BetBraTradeEngine.SurebetScanResult scan = engine.listAllSurebetMarkets();
+          cachedSurebetRows = scan.rows;
+          cachedSurebetEvents = scan.events;
+          cachedSurebetPages = scan.pages;
+          cachedSurebetAt = now;
+        } catch (Exception directError) {
+          Log.w(TAG, "direct surebet scan: " + directError.getMessage());
+          if (cachedSurebetRows.length() == 0) throw directError;
         }
+      }
+      rows = new JSONArray(cachedSurebetRows.toString());
+      if (sessionAvailable) scheduleFirstHalfScan();
+      appendSurebetRowsDeduplicated(rows, cachedFirstHalfRows);
+    } else {
+      rows = fetchAllLiveRows(apiBase, profitPoints, lolpProfitPoints);
+      if (rows == null) {
+        updateFgText("Auto Lay · a monitorar (sem rows)");
+        return;
       }
     }
 
     Set<String> stillReady = new HashSet<>();
     int placed = 0;
+    int surebetCandidates = 0;
     // Consultado uma única vez por ciclo, e só quando há candidato a enviar.
     double freeBalance = -1;
     boolean freeBalanceChecked = false;
@@ -637,24 +737,36 @@ public class AutoLayForegroundService extends Service {
       boolean liveSurebetWindowOk = !"live".equals(surebetPhase)
           || (minute != null && minute >= 0 && minute <= 60.0);
 
-      // Surebet Match Odds: nenhuma notificacao de mercado candidato. O APK
-      // avisa somente depois que o lote com as tres apostas Back foi aceito.
+      // Scanner Surebet independente do Auto: alerta imediatamente; autoOn
+      // continua sendo a unica autorizacao para enviar as tres apostas Back.
       if (matchOddsSurebetOn && surebetPhaseOn && liveSurebetWindowOk
-          && hasSession && !stopPlacing && !greenBusy) {
+          && sessionAvailable) {
         JSONObject matchOdds = analysis.optJSONObject("matchOdds");
         // A trava pertence a esta combinacao de precos, nao ao evento inteiro.
         // Assim o mesmo jogo pode receber qualquer quantidade de novas surebets,
         // sem reenviar o mesmo lote a cada poll de 10 segundos.
         String key = matchOddsSurebetKey(eventId + ":" + surebetMarketKind + ":" + surebetPhase, matchOdds);
         String stateKey = "surebet_match_last:" + eventId + ":" + surebetMarketKind + ":" + surebetPhase;
+        String alertStateKey =
+            "surebet_alert_last:" + eventId + ":" + surebetMarketKind + ":" + surebetPhase;
         boolean surebetReady = looksLikeMatchOddsSurebet(matchOdds);
         if (!surebetReady) {
           // Ao desaparecer, a mesma combinacao pode voltar depois e sera uma
           // nova oportunidade; nao existe TTL de seis horas neste filtro.
-          p.edit().remove(stateKey).apply();
+          p.edit().remove(stateKey).remove(alertStateKey).apply();
+        }
+        if (surebetReady) {
+          surebetCandidates++;
+          String lastAlert = p.getString(alertStateKey, "");
+          if (!key.equals(lastAlert)) {
+            notifySurebetOpportunity(
+                eventName, surebetMarketKind, surebetPhase, minute, matchOdds);
+            p.edit().putString(alertStateKey, key).apply();
+          }
         }
         String lastSurebet = p.getString(stateKey, "");
-        if (surebetReady && !key.equals(lastSurebet)) {
+        if (surebetReady && hasSession && !stopPlacing && !greenBusy
+            && !key.equals(lastSurebet)) {
           double balance = engine.freeBalanceEstimate(false);
           double surebetExposure = balance > 0 ? balance * Math.max(0, surebetBankPct) / 100.0 : 0;
           JSONObject surebet = engine.placeMatchOddsSurebet(
@@ -1213,6 +1325,39 @@ public class AutoLayForegroundService extends Service {
     for (int i = 0; i < rows.length(); i++) {
       JSONObject row = rows.optJSONObject(i);
       if (row != null && row.optBoolean("confirmed", false)) entries++;
+    }
+    p.edit()
+        .putInt("lastScanMarkets", rows.length())
+        .putInt(
+            "lastScanEvents",
+            BuildConfig.SUREBET_ONLY
+                ? Math.max(cachedSurebetEvents, cachedFirstHalfEvents)
+                : rows.length())
+        .putInt(
+            "lastScanPages",
+            BuildConfig.SUREBET_ONLY ? cachedSurebetPages + cachedFirstHalfPages : 0)
+        .putInt("lastScanFirstHalfMarkets", cachedFirstHalfRows.length())
+        .putBoolean("firstHalfScanBusy", firstHalfBusy.get())
+        .putInt("lastScanCandidates", surebetCandidates)
+        .apply();
+    if (BuildConfig.SUREBET_ONLY) {
+      if (!sessionAvailable) {
+        updateFgText("Busca pausada · reconecte a " + exchangeName());
+      } else {
+        String execution = autoOn ? "auto ativo" : "somente alertas";
+        updateFgText(
+            "Busca 5s · "
+                + cachedSurebetEvents
+                + " jogos · "
+                + rows.length()
+                + " mercados (1T "
+                + cachedFirstHalfRows.length()
+                + ") · "
+                + surebetCandidates
+                + " oportunidade(s) · "
+                + execution);
+      }
+      return;
     }
     if (!autoOn) {
       updateFgText("Monitor ativo · Auto Lay desligado · a notificar sinais");
@@ -2532,6 +2677,66 @@ public class AutoLayForegroundService extends Service {
     return selection != null && !selection.isEmpty()
         ? "Lay " + selection
         : "Lay (estratégia não identificada)";
+  }
+
+  private void notifySurebetOpportunity(
+      String eventName,
+      String marketKind,
+      String phase,
+      Double minute,
+      JSONObject matchOdds) {
+    if (!BuildConfig.SUREBET_ONLY) return;
+    NotificationManager nm = getSystemService(NotificationManager.class);
+    if (nm == null || matchOdds == null) return;
+    ensureChannels();
+    String marketLabel =
+        "first-half".equals(marketKind) ? "RESULTADO DO 1º TEMPO" : "MATCH ODDS";
+    double homeOdd = surebetLegOdd(matchOdds, "home");
+    double drawOdd = surebetLegOdd(matchOdds, "draw");
+    double awayOdd = surebetLegOdd(matchOdds, "away");
+    double divisor = 1.0 / homeOdd + 1.0 / drawOdd + 1.0 / awayOdd;
+    double grossPct = divisor > 0 ? (1.0 / divisor - 1.0) * 100.0 : 0;
+    String phaseLabel = "live".equals(phase)
+        ? "Live" + (minute != null ? " " + minute.intValue() + "'" : "")
+        : "Pré-live / intervalo";
+    String body =
+        phaseLabel
+            + " · 1 x" + formatOdd(homeOdd)
+            + " · X x" + formatOdd(drawOdd)
+            + " · 2 x" + formatOdd(awayOdd)
+            + " · margem bruta "
+            + String.format(new Locale("pt", "BR"), "%.2f", grossPct)
+            + "%";
+    Intent open = new Intent(this, MainActivity.class);
+    open.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+    PendingIntent pi =
+        PendingIntent.getActivity(
+            this,
+            (eventName + marketKind).hashCode(),
+            open,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    Notification notification =
+        new NotificationCompat.Builder(this, CHANNEL_SUREBET)
+            .setContentTitle("SUREBET · " + marketLabel + " · " + eventName)
+            .setContentText(body)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+            .setSmallIcon(R.drawable.ic_stat_tips3x3)
+            .setColor(COLOR_GREEN)
+            .setContentIntent(pi)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(false)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVibrate(new long[] {0, 100, 60, 100, 60, 220})
+            .build();
+    nm.notify((eventName + ":" + marketKind + ":" + phase).hashCode(), notification);
+    pulseScreenWake();
+  }
+
+  private static double surebetLegOdd(JSONObject matchOdds, String legName) {
+    JSONObject leg = matchOdds != null ? matchOdds.optJSONObject(legName) : null;
+    return leg != null ? leg.optDouble("backBook", leg.optDouble("back", 0)) : 0;
   }
 
   /** Notificação ENTRAR (tela off). gold=Eventos raros; senão Lay 3x3 verde. */

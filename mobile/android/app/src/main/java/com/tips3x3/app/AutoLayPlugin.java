@@ -138,6 +138,7 @@ public class AutoLayPlugin extends Plugin {
     out.put("lucroCertoOn", BuildConfig.SUREBET_ONLY ? false : settings.getBoolean("lucroCertoOn", true));
     out.put("stakeFixedLc", settings.getFloat("stakeFixedLc", 1001f));
     out.put("reservedLucroCerto", BuildConfig.SUREBET_ONLY ? 0 : new BetBraTradeEngine(getContext()).getReservedLucroCerto());
+    appendScanStatus(out, settings);
     call.resolve(out);
   }
 
@@ -164,7 +165,21 @@ public class AutoLayPlugin extends Plugin {
         "stakeFixedLc",
         AutoLayForegroundService.prefs(getContext()).getFloat("stakeFixedLc", 1001f));
     out.put("reservedLucroCerto", BuildConfig.SUREBET_ONLY ? 0 : new BetBraTradeEngine(getContext()).getReservedLucroCerto());
+    appendScanStatus(out, AutoLayForegroundService.prefs(getContext()));
     call.resolve(out);
+  }
+
+  private static void appendScanStatus(
+      JSObject out, android.content.SharedPreferences settings) {
+    out.put("lastScanStartedAt", settings.getLong("lastScanStartedAt", 0L));
+    out.put("lastScanCompletedAt", settings.getLong("lastScanCompletedAt", 0L));
+    out.put("lastScanMarkets", settings.getInt("lastScanMarkets", 0));
+    out.put("lastScanEvents", settings.getInt("lastScanEvents", 0));
+    out.put("lastScanPages", settings.getInt("lastScanPages", 0));
+    out.put("lastScanFirstHalfMarkets", settings.getInt("lastScanFirstHalfMarkets", 0));
+    out.put("firstHalfScanBusy", settings.getBoolean("firstHalfScanBusy", false));
+    out.put("lastScanCandidates", settings.getInt("lastScanCandidates", 0));
+    out.put("lastScanError", settings.getString("lastScanError", ""));
   }
 
   /** Remove preferencias incompatíveis herdadas do APK Auto Lay comum. */
