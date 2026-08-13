@@ -47,11 +47,11 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
+      - name: Setup Java 21
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - name: Install mobile dependencies
         working-directory: mobile
