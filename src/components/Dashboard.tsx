@@ -13,7 +13,6 @@ import { LiveAlertToasts } from "@/components/LiveAlertToasts";
 import { TradingTerminal } from "@/components/terminal/TradingTerminal";
 import DashboardHero from "@/components/DashboardHero";
 import DashboardShell from "@/components/dashboard-hero/DashboardShell";
-import { OddsComparePanel } from "@/components/OddsComparePanel";
 import { IndicationsStats } from "@/components/IndicationsStats";
 import WalletPanel from "@/components/WalletPanel";
 import AfiliadosPanel from "@/components/AfiliadosPanel";
@@ -76,6 +75,8 @@ import { isNativeApp, nativeNotify } from "@/lib/native-alerts";
 import { getNotifyOnlyMatched, setNotifyOnlyMatched } from "@/lib/notify-settings";
 import {
   fetchActiveTrade,
+  getAutoLayNativeStatus,
+  openAutoLaySettings,
   syncAutoLayBackground,
   type ActiveTradeSnapshot,
 } from "@/lib/betbra/auto-lay-bg";
@@ -509,7 +510,6 @@ type NavView =
   | "live"
   | "alertas"
   | "estatisticas"
-  | "comparar"
   | "evento"
   | "carteira"
   | "config"
@@ -647,7 +647,6 @@ function isNavView(v: string | null): v is NavView {
     v === "live" ||
     v === "alertas" ||
     v === "estatisticas" ||
-    v === "comparar" ||
     v === "evento" ||
     v === "carteira" ||
     v === "config"
@@ -944,6 +943,10 @@ export function Dashboard() {
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
   const [nativeApp, setNativeApp] = useState(false);
+  const [nativeAutoOn, setNativeAutoOn] = useState(false);
+  const [nativeSurebetEdition, setNativeSurebetEdition] = useState(false);
+  const [nativeEditionResolved, setNativeEditionResolved] = useState(false);
+  const [nativeExchangeName, setNativeExchangeName] = useState("Exchange");
   const didAutoResetFilters = useRef(false);
   const [betBraConnected, setBetBraConnected] = useState(false);
   const [betBraBalance, setBetBraBalance] = useState<number | null>(null);
@@ -1151,6 +1154,12 @@ export function Dashboard() {
     if (isNavView(v)) setView(v);
   }, [searchParams]);
 
+  useEffect(() => {
+    if (!mounted || nativeApp || view !== "config") return;
+    setView("dashboard");
+    router.replace("/app?view=dashboard", { scroll: false });
+  }, [mounted, nativeApp, router, view]);
+
   /**
    * Troca de aba usa router.replace (não empilha histórico), então o botão
    * "Voltar" do navegador tende a sair do app direto para a landing/login.
@@ -1188,6 +1197,13 @@ export function Dashboard() {
     setLastSyncAt(Date.now());
     const native = isNativeApp();
     setNativeApp(native);
+    if (native) {
+      setLay1x1On(false);
+      if (getActiveStrategy() === "lay-1x1") {
+        setStrategy("lay-3x3");
+        setActiveStrategy("lay-3x3");
+      }
+    }
     setNativeLay3x3StakePctState(getNativeLay3x3StakePct());
     setNativeQovStakePctState(getNativeQovStakePct());
     setNativeEventosRarosStakeState(getNativeEventosRarosStake());
@@ -1235,6 +1251,40 @@ export function Dashboard() {
       unsub();
     };
   }, [refreshExchangeSnapshot]);
+
+  useEffect(() => {
+    if (!nativeApp) return;
+    let cancelled = false;
+    const refreshNativeAuto = async () => {
+      const status = await getAutoLayNativeStatus();
+      if (!cancelled && status) {
+        setNativeAutoOn(Boolean(status.autoOn));
+        setNativeSurebetEdition(Boolean(status.surebetEdition));
+        setNativeEditionResolved(true);
+        setNativeExchangeName(status.exchangeDisplayName || "Exchange");
+        if (status.surebetEdition) {
+          setLucroCertoOn(false);
+          setNativeReservedLcState(0);
+        } else if (status.managedInApk) {
+          const nativeLcOn = status.lucroCertoOn === true;
+          setLucroCertoOn(nativeLcOn);
+          setNativeReservedLcState(
+            nativeLcOn && Number.isFinite(Number(status.reservedLucroCerto))
+              ? Math.max(0, Number(status.reservedLucroCerto))
+              : 0,
+          );
+        }
+      }
+    };
+    void refreshNativeAuto();
+    const id = window.setInterval(() => void refreshNativeAuto(), 3_000);
+    window.addEventListener("focus", refreshNativeAuto);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      window.removeEventListener("focus", refreshNativeAuto);
+    };
+  }, [nativeApp]);
   const { favorites, favoriteIds, toggleFavorite, isFavorite, reconcileWithLive } =
     useFavorites();
 
@@ -1270,7 +1320,11 @@ export function Dashboard() {
     armAlerts,
     extAutoSend,
     setExtAutoSend: setExtAutoSendBase,
-  } = useLiveAlerts(favorites, live?.rows);
+  } = useLiveAlerts(
+    favorites,
+    live?.rows,
+    !isNativeApp() || (nativeEditionResolved && !nativeSurebetEdition),
+  );
 
   const setExtAutoSend = useCallback(
     (on: boolean) => {
@@ -1772,6 +1826,11 @@ export function Dashboard() {
   };
 
   const goNav = (next: NavView) => {
+    if (next === "config" && !nativeApp) {
+      setView("dashboard");
+      router.replace("/app?view=dashboard", { scroll: false });
+      return;
+    }
     setView(next);
     setTopNavOpen(false);
     if (next !== "evento") setSelectedId(null);
@@ -1900,7 +1959,7 @@ export function Dashboard() {
             className="term-ext-switch"
             title={
               nativeApp
-                ? "Auto Lay no app (Lay 3x3 green / Eventos raros hold — requer BetBra)"
+                ? "Auto Lay no app (Lay 3x3 green / Eventos raros hold — requer Exchange)"
                 : "Automação pela extensão está suspensa; use o APK"
             }
           >
@@ -1909,9 +1968,9 @@ export function Dashboard() {
             </span>
             <input
               type="checkbox"
-              checked={nativeApp && !!extAutoSend}
+              checked={nativeApp && nativeAutoOn}
               disabled={!nativeApp}
-              onChange={(e) => setExtAutoSend(e.target.checked)}
+              onChange={() => void openAutoLaySettings()}
               aria-label={nativeApp ? "Auto Lay" : "Extensão suspensa"}
             />
             <span className="term-ext-switch-track" aria-hidden />
@@ -1954,7 +2013,7 @@ export function Dashboard() {
         disabled={nativeApp}
         activeView={view}
         alertCount={entryAlerts}
-        onNavigate={(next) => goNav(next)}
+        onNavigate={(next) => goNav(next as NavView)}
         onBuyCredits={() => goNav("carteira")}
         onLogout={() => {
           void fetch("/api/auth/logout", { method: "POST" }).then(() => {
@@ -1964,7 +2023,6 @@ export function Dashboard() {
       >
       <main className="main-pane is-terminal">
         {view !== "dashboard" &&
-          view !== "comparar" &&
           view !== "estatisticas" &&
           view !== "carteira" && (
         <header className="main-head">
@@ -2031,13 +2089,21 @@ export function Dashboard() {
               offers: betBraOffers,
               activeTrade: activeTradeSnap,
               reservedLc: nativeReservedLc,
-              lucroCertoOn,
+              lucroCertoOn: nativeSurebetEdition ? false : lucroCertoOn,
+              surebetEdition: nativeSurebetEdition,
+              exchangeName: nativeExchangeName,
               lastLay: nativeLayLast,
               busy: betBraBusy,
               onConnect: () => {
                 setBetBraBusy(true);
                 void openBetBraLogin()
-                  .then(() => refreshExchangeSnapshot())
+                  // Reaplica as preferências e envia ACTION_START: isto
+                  // reinicia imediatamente o poll nativo após reconectar.
+                  .then(async () => {
+                    await syncAutoLayBackground();
+                    await refreshExchangeSnapshot();
+                    setTick((t) => t + 1);
+                  })
                   .finally(() => setBetBraBusy(false));
               },
               onRefresh: () => {
@@ -2046,7 +2112,10 @@ export function Dashboard() {
                   setBetBraBusy(false),
                 );
               },
-              onOpenSettings: () => goNav("config"),
+              onOpenSettings: () => {
+                if (nativeApp) void openAutoLaySettings();
+                else goNav("config");
+              },
             }}
           />
         )}
@@ -2129,7 +2198,7 @@ export function Dashboard() {
                     LOLP
                   </button>
                 ) : null}
-                {lay1x1On ? (
+                {lay1x1On && !nativeApp ? (
                   <button
                     type="button"
                     className={`pill ${strategy === "lay-1x1" ? "active" : ""}`}
@@ -2196,7 +2265,7 @@ export function Dashboard() {
               <LayOverLimitPressurePanel />
             ) : null}
 
-            {isLay1x1Strategy(strategy) ? (
+            {!nativeApp && isLay1x1Strategy(strategy) ? (
               <Lay1x1Panel
                 snapshots={(live?.rows ?? [])
                   .map((r) => r.lay1x1)
@@ -2385,9 +2454,11 @@ export function Dashboard() {
               <label className="alertas-ext-toggle">
                 <input
                   type="checkbox"
-                  checked={nativeApp && !!extAutoSend}
+                  checked={nativeApp ? nativeAutoOn : !!extAutoSend}
                   disabled={!nativeApp}
-                  onChange={(e) => setExtAutoSend(e.target.checked)}
+                  onChange={() => {
+                    if (nativeApp) void openAutoLaySettings();
+                  }}
                 />
                 <span>
                   <strong>
@@ -2395,7 +2466,7 @@ export function Dashboard() {
                   </strong>
                   <em>
                     {nativeApp
-                      ? "Envia ordens na BetBra pelas estratégias ligadas abaixo (3x3 = Lay+Back · Eventos raros = hold)."
+                      ? "Envia ordens na Exchange pelas estratégias ligadas abaixo (3x3 = Lay+Back · Eventos raros = hold)."
                       : "A automação por extensão está pausada. Para operar automaticamente, use o APK."}
                   </em>
                 </span>
@@ -2522,7 +2593,7 @@ export function Dashboard() {
                 </span>
               </label>
 
-              <label className="alertas-ext-toggle">
+              <label className="alertas-ext-toggle" hidden={nativeApp}>
                 <input
                   type="checkbox"
                   checked={lay1x1On}
@@ -2544,7 +2615,7 @@ export function Dashboard() {
               </label>
               <p className="alertas-ext-hint">
                 {nativeApp
-                  ? extAutoSend
+                  ? nativeAutoOn
                     ? betBraConnected
                       ? `Ligado — ${[
                           lay3x3On ? "Lay 3x3" : null,
@@ -2552,8 +2623,8 @@ export function Dashboard() {
                           lucroCertoOn ? "Lucro certo" : null,
                         ]
                           .filter(Boolean)
-                          .join(" + ") || "nenhuma estratégia"} com sessão BetBra. Notificação persistente “Auto Lay ativo” mantém ordens com a tela desligada.`
-                      : "Ligado — conecte a BetBra em Perfil para enviar ordens."
+                          .join(" + ") || "nenhuma estratégia"} com sessão da Exchange. Notificação persistente “Auto Lay ativo” mantém ordens com a tela desligada.`
+                      : "Ligado — conecte a Exchange em Perfil para enviar ordens."
                     : "Desligado — marque Auto Lay para enviar no app."
                   : extAutoSend
                     ? "Ligado — mantenha a extensão Bolsa Manual atualizada e logada."
@@ -2608,12 +2679,6 @@ export function Dashboard() {
           </div>
         )}
 
-        {view === "comparar" && (
-          <div className="panel-block">
-            <OddsComparePanel />
-          </div>
-        )}
-
         {view === "carteira" && <WalletPanel />}
 
         {view === "afiliados" && (
@@ -2628,7 +2693,7 @@ export function Dashboard() {
           </div>
         )}
 
-        {view === "config" && (
+        {view === "config" && nativeApp && (
           <div className="panel-block config-panel">
             {walletBlocked && !isMaster ? (
               <div className="banner-error">
@@ -2684,7 +2749,7 @@ export function Dashboard() {
               </section>
             ) : null}
 
-            <section className="config-card">
+            {!nativeApp ? <section className="config-card">
               <h3>Domínio da Bolsa</h3>
               <p className="config-lead">
                 BetBra e Bolsa de Aposta usam a mesma Bolsa (Mexchange) por
@@ -2716,11 +2781,12 @@ export function Dashboard() {
                   </div>
                 ))}
               </div>
-            </section>
+            </section> : null}
 
             <section className="config-card">
               <h3>Filtros estratégicos</h3>
               <div className="cfg-row-list">
+                <div hidden={nativeApp}>
                 <StrategyConfigRow
                   icon="3×3"
                   name="Lay 3x3"
@@ -2748,6 +2814,7 @@ export function Dashboard() {
                     },
                   }}
                 />
+                </div>
                 <StrategyConfigRow
                   icon="🦓"
                   name="Lay QOV zebra"

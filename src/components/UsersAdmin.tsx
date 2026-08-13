@@ -153,39 +153,6 @@ export default function UsersAdmin() {
     }
   }
 
-  async function toggleRole(u: PublicUser) {
-    const nextRole = u.role === "master" ? "user" : "master";
-    if (
-      nextRole === "master" &&
-      !window.confirm(
-        `Tornar ${u.email} master? Master tem acesso a todos os filtros inseridos pelo admin, sem restrição de faixa de crédito.`,
-      )
-    )
-      return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(
-        `/api/auth/users/${encodeURIComponent(u.email)}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role: nextRole }),
-        },
-      );
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        setError(data.error || "Falha ao atualizar papel.");
-        return;
-      }
-      await load();
-    } catch {
-      setError("Falha de rede ao atualizar papel.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function deactivatePlan(u: PublicUser) {
     const wallet = wallets.get(u.email);
     const balance = wallet?.balance ?? 0;
@@ -296,7 +263,7 @@ export default function UsersAdmin() {
   }
 
   return (
-    <section className="config-card">
+    <section className="config-card admin-users">
       <h3>Usuários</h3>
       <p className="config-lead">
         Crie acessos para o painel. O login do master continua pelas variáveis
@@ -493,14 +460,6 @@ export default function UsersAdmin() {
                     onClick={() => void toggleActive(u)}
                   >
                     {u.active ? "Desativar" : "Ativar"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    disabled={busy}
-                    onClick={() => void toggleRole(u)}
-                  >
-                    {u.role === "master" ? "Remover master" : "Tornar master"}
                   </button>
                   <button
                     type="button"

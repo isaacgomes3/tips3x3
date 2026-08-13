@@ -72,7 +72,7 @@ export function ActiveAlertsPanel({
                 href={item.href}
                 target="_blank"
                 rel="noreferrer"
-                title="Abrir evento na BetBra"
+                title="Abrir evento na Exchange"
               >
                 <span>{item.badge}</span>
                 <ExternalLink aria-hidden className="active-alert-link-icon" />

@@ -4,8 +4,6 @@ import {
   deleteUser,
   isMasterEmail,
   setUserActive,
-  setUserRole,
-  type UserRole,
 } from "@/lib/auth/users-store";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +36,6 @@ export async function PATCH(request: Request, ctx: Ctx) {
     const email = decodeURIComponent(raw || "");
     const body = (await request.json()) as {
       active?: boolean;
-      role?: UserRole;
     };
 
     if (typeof body.active === "boolean") {
@@ -49,16 +46,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
       return NextResponse.json({ ok: true, user: result.user });
     }
 
-    if (body.role === "user" || body.role === "master") {
-      const result = setUserRole(email, body.role);
-      if (!result.ok) {
-        return NextResponse.json({ error: result.error }, { status: 400 });
-      }
-      return NextResponse.json({ ok: true, user: result.user });
-    }
-
     return NextResponse.json(
-      { error: "Informe active: true|false ou role: user|master." },
+      { error: "Informe active: true|false." },
       { status: 400 },
     );
   } catch {

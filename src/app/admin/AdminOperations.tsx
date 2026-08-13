@@ -42,6 +42,7 @@ const KIND_LABEL: Record<string, string> = {
   "lay-3x3": "Lay 3x3",
   "eventos-raros": "Eventos raros",
   "lucro-certo": "Lucro certo",
+  surebet: "Surebet",
 };
 
 const EVENT_LABEL: Record<string, string> = {
@@ -88,7 +89,7 @@ export default function AdminOperations({ users }: { users: PublicUser[] }) {
   }, [email, source]);
 
   return (
-    <div className="admin-grid">
+    <div className="admin-grid admin-operations">
       <section className="config-card">
         <h3>Operações executadas</h3>
         <p className="config-lead">

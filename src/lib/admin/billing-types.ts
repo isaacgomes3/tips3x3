@@ -2,7 +2,6 @@ export type BillingCycle = "mensal" | "trimestral" | "semestral" | "anual";
 
 export type SubscriptionStatus =
   | "ativo"
-  | "teste"
   | "inadimplente"
   | "cancelado";
 

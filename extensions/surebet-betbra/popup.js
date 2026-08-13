@@ -1,0 +1,5 @@
+import { CONFIG } from "./config.js";
+const $=id=>document.getElementById(id); $("title").textContent=`Surebet · ${CONFIG.label}`;
+const defaults={enabled:false,prelive:true,live:true,budget:100,commission:5,minRoi:0.1};
+async function load(){const s=await chrome.storage.sync.get(defaults); for(const k of ["enabled","prelive","live"])$(k).checked=!!s[k]; for(const k of ["budget","commission","minRoi"])$(k).value=s[k]; const l=await chrome.storage.local.get(["status","lastError","lastScanAt","lastOpportunities","lastOrder"]); $("status").innerHTML=l.lastError?`<span class="danger">${l.lastError}</span>`:`<span class="ok">${l.status||"Pronta"}</span><br>Oportunidades: ${l.lastOpportunities||0}<br><small>${l.lastScanAt?new Date(l.lastScanAt).toLocaleString():"Ainda não verificada"}${l.lastOrder?`<br>Última entrada: ${l.lastOrder}`:""}</small>`;}
+$("save").onclick=async()=>{const s={}; for(const k of ["enabled","prelive","live"])s[k]=$(k).checked; for(const k of ["budget","commission","minRoi"])s[k]=Number($(k).value); await chrome.storage.sync.set(s); await chrome.runtime.sendMessage({type:"SCAN_NOW"}); await load();}; load();

@@ -17,7 +17,6 @@ const CYCLES: Array<{ id: Subscription["cycle"]; label: string }> = [
 
 const STATUSES: Array<{ id: Subscription["status"]; label: string }> = [
   { id: "ativo", label: "Ativo" },
-  { id: "teste", label: "Em teste" },
   { id: "inadimplente", label: "Inadimplente" },
   { id: "cancelado", label: "Cancelado" },
 ];
@@ -153,7 +152,7 @@ export default function AdminFinance({
   }
 
   return (
-    <div className="admin-grid">
+    <div className="admin-grid admin-finance">
       {msg ? (
         <p className={`users-admin-msg ${msg.ok ? "is-up" : "is-down"}`}>
           {msg.text}

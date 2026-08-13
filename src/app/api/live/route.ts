@@ -84,6 +84,8 @@ export async function GET(request: Request) {
     const onlyWindow = searchParams.get("ideal") === "1";
     const limitRaw = Number(searchParams.get("limit") ?? 40);
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 60) : 40;
+    const offsetRaw = Number(searchParams.get("offset") ?? 0);
+    const offset = Number.isFinite(offsetRaw) ? Math.max(0, Math.floor(offsetRaw)) : 0;
     const targetProfitPct = parseProfitPctQuery(searchParams.get("profitPct"));
     // LOLP tem lucro alvo próprio (default 1%): o painel/APK manda o valor do
     // utilizador, senão fica no default da estratégia.
@@ -96,7 +98,7 @@ export async function GET(request: Request) {
         : LAY_OVER_LIMIT_PRESSURE.defaultTargetProfitPct;
 
     const inplay = await getInplayInfo().catch(() => []);
-    const slice = inplay.slice(0, limit);
+    const slice = inplay.slice(offset, offset + limit);
 
     const rows = (
       await Promise.all(
@@ -267,6 +269,7 @@ export async function GET(request: Request) {
                 isLive: true,
                 redCards: liveSnap.redCards,
                 hardBlockers: indicationGate.blockers,
+                stoppage: fotmobIntel?.stoppage ?? null,
               });
 
               const totalGoals =
@@ -744,7 +747,11 @@ export async function GET(request: Request) {
           }
         }),
       );
-      reconcileAbsentIndications(activeIds);
+      // Uma página parcial não representa todo o feed. Reconciliar ausentes
+      // aqui encerraria operações que apenas ficaram noutra página.
+      if (offset === 0 && offset + limit >= inplay.length) {
+        reconcileAbsentIndications(activeIds);
+      }
     } catch {
       // settle não deve derrubar o feed
     }
@@ -760,7 +767,10 @@ export async function GET(request: Request) {
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
       inplayCount: inplay.length,
+      offset,
       monitored: rows.length,
+      hasMore: offset + slice.length < inplay.length,
+      nextOffset: offset + slice.length < inplay.length ? offset + slice.length : null,
       entries: rows.filter((r) => r.confirmed).length,
       extSignalsPublished,
       rows,

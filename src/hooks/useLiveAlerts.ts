@@ -247,6 +247,7 @@ function vibrateEnter() {
 export function useLiveAlerts(
   favorites: FavoriteMatch[],
   liveRows: LiveScoreRow[] | undefined,
+  enabled = true,
 ) {
   const [toasts, setToasts] = useState<LiveToast[]>([]);
   const [alertsArmed, setAlertsArmed] = useState(false);
@@ -263,18 +264,27 @@ export function useLiveAlerts(
   const autoSentRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    if (!enabled) return;
     setExtAutoSendState(isExtAutoSendEnabled());
     if (isNativeApp() && isExtAutoSendEnabled()) {
       void syncAutoLayBackground({ autoOn: true });
     }
-  }, []);
+  }, [enabled]);
 
   const setExtAutoSend = useCallback((on: boolean) => {
     setExtAutoSendEnabled(on);
     setExtAutoSendState(on);
     // Respeita filtros já desligados pelo utilizador — só sincroniza o estado atual.
     if (isNativeApp()) {
-      void syncAutoLayBackground({ autoOn: on });
+      if (on) {
+        // Android 13+: pede a permissão no gesto do utilizador antes de
+        // reiniciar o serviço persistente e sua notificação "Auto Lay ativo".
+        void initNativeAlerts({ requestPermission: true }).then(() =>
+          syncAutoLayBackground({ autoOn: true }),
+        );
+      } else {
+        void syncAutoLayBackground({ autoOn: false });
+      }
     }
   }, []);
 
@@ -300,7 +310,7 @@ export function useLiveAlerts(
     ): boolean => {
       // A execução pela extensão foi suspensa. O APK continua enviando pelo
       // serviço nativo em segundo plano; este caminho nunca deve duplicá-lo.
-      if (isExtensionExecutionSuspended()) return false;
+      if (!enabled || isExtensionExecutionSuspended()) return false;
       if (!isExtAutoSendEnabled()) return false;
       const id = row.analysis.eventId;
       if (!id || !(opts.layOdds > 1.01)) return false;
@@ -336,7 +346,7 @@ export function useLiveAlerts(
       });
       return true;
     },
-    [],
+    [enabled],
   );
 
   const pushAlert = useCallback(
@@ -347,6 +357,7 @@ export function useLiveAlerts(
       tag: string;
       strategy?: LiveToastStrategy;
     }) => {
+      if (!enabled) return;
       const toast: LiveToast = {
         id: opts.tag,
         kind: opts.kind,
@@ -387,7 +398,7 @@ export function useLiveAlerts(
         setToasts((list) => list.filter((t) => t.id !== toast.id));
       }, opts.kind === "enter" ? 20_000 : 12_000);
     },
-    [],
+    [enabled],
   );
 
   const armAlerts = useCallback(async () => {
@@ -404,6 +415,7 @@ export function useLiveAlerts(
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     const unlock = () => {
       void unlockAlertAudio().then(() => {
         if (isAlertAudioUnlocked()) setAlertsArmed(true);
@@ -428,9 +440,10 @@ export function useLiveAlerts(
       window.removeEventListener("touchstart", unlock);
       window.removeEventListener("keydown", unlock);
     };
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     const favIds = new Set(
       favorites.filter((f) => f.notifyGoals).map((f) => f.eventId),
     );
@@ -804,7 +817,9 @@ export function useLiveAlerts(
       // ENTRAR Lay 1x1 — favorito 1x0 com pressão + faixa odd 15–30
       const lay1x1 = row.lay1x1;
       const lay1x1Key = `${id}:lay-1x1`;
-      const lay1x1Ready = Boolean(lay1x1?.entryReady && !lay1x1?.settled);
+      const lay1x1Ready = Boolean(
+        !isNativeApp() && lay1x1?.entryReady && !lay1x1?.settled,
+      );
       if (shouldFireEnter(lay1x1Key, lay1x1Ready)) {
         const minute =
           row.live?.minute != null
@@ -883,10 +898,11 @@ export function useLiveAlerts(
     }
 
     primedRef.current = true;
-  }, [extAutoSend, favorites, liveRows, pushAlert, sendToExtension]);
+  }, [enabled, extAutoSend, favorites, liveRows, pushAlert, sendToExtension]);
 
   // Revalida quando o celular volta à tela — só flanco novo (não reenvia sinal antigo)
   useEffect(() => {
+    if (!enabled) return;
     const onVis = () => {
       if (document.visibilityState !== "visible") return;
       void unlockAlertAudio();
@@ -1054,7 +1070,9 @@ export function useLiveAlerts(
         // Lay 1x1 — revalida ao voltar à tela
         const lay1x1 = row.lay1x1;
         const lay1x1Key = `${id}:lay-1x1`;
-        const lay1x1Ready = Boolean(lay1x1?.entryReady && !lay1x1?.settled);
+        const lay1x1Ready = Boolean(
+          !isNativeApp() && lay1x1?.entryReady && !lay1x1?.settled,
+        );
         const lay1x1Prev = entryReadyPrevRef.current.get(lay1x1Key);
         entryReadyPrevRef.current.set(lay1x1Key, lay1x1Ready);
         if (
@@ -1091,7 +1109,7 @@ export function useLiveAlerts(
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [favorites, liveRows, pushAlert, sendToExtension]);
+  }, [enabled, favorites, liveRows, pushAlert, sendToExtension]);
 
   return {
     toasts,

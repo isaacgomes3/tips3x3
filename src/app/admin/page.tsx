@@ -11,7 +11,7 @@ export default function AdminPage() {
   return (
     <Suspense
       fallback={
-        <div className="admin-shell">
+        <div className="admin-web-root">
           <p className="config-hint">Carregando administração…</p>
         </div>
       }

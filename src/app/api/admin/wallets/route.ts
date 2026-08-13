@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireMaster } from "@/lib/auth/require-master";
 import { getAppConfig } from "@/lib/admin/app-config-store";
+import { listMasterEmails } from "@/lib/auth/users-store";
 import { isAutoConfirmGateway, isLucReady } from "@/lib/wallet/luc-paguei";
 import {
   addWalletAdjustment,
+  ensureMasterWalletCredit,
   creditDeposit,
   listDeposits,
   listWalletEntries,
@@ -18,6 +20,7 @@ export async function GET() {
   if (!gate.ok) return gate.res;
 
   const config = getAppConfig();
+  for (const email of listMasterEmails()) ensureMasterWalletCredit(email);
   const wallets = listWalletSummaries();
   const deposits = listDeposits({ limit: 100 });
 

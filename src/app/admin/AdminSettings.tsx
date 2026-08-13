@@ -58,7 +58,7 @@ export default function AdminSettings({
   }
 
   return (
-    <div className="admin-grid">
+    <div className="admin-grid admin-settings">
       <section className="config-card">
         <h3>Defaults de operação</h3>
         <p className="config-lead">

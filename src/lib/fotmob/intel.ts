@@ -3,6 +3,14 @@ import type { MatchIntel, SofaGraphPoint } from "@/lib/sofascore/types";
 
 const FOTMOB_ORIGIN = "https://www.fotmob.com";
 
+type FotmobLiveTime = {
+  short?: string;
+  long?: string;
+  maxTime?: number;
+  addedTime?: number;
+  penalties?: number;
+};
+
 type FotmobMatch = {
   id: number;
   leagueId?: number;
@@ -15,7 +23,7 @@ type FotmobMatch = {
     finished?: boolean;
     scoreStr?: string;
     utcTime?: string;
-    liveTime?: { short?: string; long?: string };
+    liveTime?: FotmobLiveTime;
   };
 };
 
@@ -348,7 +356,7 @@ async function fetchFotmobMatchIntel(
 
   const header = details as {
     header?: {
-      status?: { scoreStr?: string; liveTime?: { short?: string } };
+      status?: { scoreStr?: string; liveTime?: FotmobLiveTime };
       teams?: Array<{ name?: string; score?: number }>;
     };
     general?: { matchName?: string };
@@ -363,6 +371,16 @@ async function fetchFotmobMatchIntel(
     (best.match.home?.score != null && best.match.away?.score != null
       ? `${best.match.home.score}-${best.match.away.score}`
       : undefined);
+  const liveTime =
+    header.header?.status?.liveTime ?? best.match.status?.liveTime ?? null;
+  const rawStoppage = liveTime?.short?.trim() || liveTime?.long?.trim() || null;
+  const stoppageMatch = rawStoppage?.match(/\b90\s*\+\s*(\d{1,2})\b/) ?? null;
+  const addedTime =
+    Number.isFinite(liveTime?.addedTime) && Number(liveTime?.addedTime) > 0
+      ? Math.trunc(Number(liveTime?.addedTime))
+      : null;
+  const maxTime =
+    Number.isFinite(liveTime?.maxTime) ? Math.trunc(Number(liveTime?.maxTime)) : null;
 
   const detailsWithStats = {
     ...details,
@@ -389,8 +407,15 @@ async function fetchFotmobMatchIntel(
     matchName: `${homeName} vs ${awayName}`,
     competition: best.league,
     status:
-      header.header?.status?.liveTime?.short ??
+      liveTime?.short ??
       (best.match.status?.ongoing ? "Ao vivo" : undefined),
+    stoppage: {
+      active: Boolean(stoppageMatch),
+      addedTime,
+      elapsed: stoppageMatch ? Number(stoppageMatch[1]) : null,
+      maxTime,
+      raw: rawStoppage,
+    },
     scoreLabel,
     xg: { home: xgHome, away: xgAway, period: "ALL" },
     pressure: {

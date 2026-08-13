@@ -14,6 +14,7 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const email = (searchParams.get("email") || "").trim().toLowerCase();
+  const product = (searchParams.get("product") || "").trim();
   if (!email) {
     return NextResponse.json(
       { ok: false, error: "Informe o email do usuário." },
@@ -22,7 +23,9 @@ export async function GET(request: Request) {
   }
 
   const items = listIndications({ limit: MAX_ITEMS }).filter(
-    (i) => (i.userEmail ?? "").trim().toLowerCase() === email,
+    (i) =>
+      (i.userEmail ?? "").trim().toLowerCase() === email &&
+      (!product || i.appProduct === product),
   );
   const days = buildStatementDays(items);
 

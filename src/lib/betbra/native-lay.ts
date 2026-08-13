@@ -196,10 +196,10 @@ function humanizeLayError(raw: string): string {
     return "Saldo insuficiente na Exchange. Cancele ofertas abertas ou use % menor da banca.";
   }
   if (/unable to resolve host|no address associated/i.test(s)) {
-    return "Sem rede/DNS para a API BetBra. Confira Wi‑Fi/4G e tente Reconectar.";
+    return "Sem rede/DNS para a API da Exchange. Confira Wi‑Fi/4G e tente Reconectar.";
   }
   if (upper.includes("UNAUTHORIZED") || /"status"\s*:\s*401/.test(s)) {
-    return "Sessão BetBra expirada ou fundos insuficientes — toque em Reconectar / Atualizar.";
+    return "Sessão da Exchange expirada ou fundos insuficientes — toque em Reconectar / Atualizar.";
   }
   // Evita dump de JSON enorme no card da Bolsa
   if (s.startsWith("{") && s.length > 120) {
@@ -677,7 +677,7 @@ export async function executeNativeHoldLay(
   if (!session?.connected) {
     const failed: BetBraPlaceLayResult = {
       ok: false,
-      error: "Conecte a BetBra no app antes do Auto Lay",
+      error: "Conecte a Exchange no app antes do Auto Lay",
     };
     setLastResult({
       at: Date.now(),
@@ -688,8 +688,8 @@ export async function executeNativeHoldLay(
     });
     void nativeNotify({
       kind: "enter",
-      title: "BetBra desconectada",
-      body: "Abra Config → Conectar BetBra para Auto Lay",
+      title: "Exchange desconectada",
+      body: "Abra Config → Conectar Exchange para Auto Lay",
       tag: `tips3x3-betbra-session-${Date.now()}`,
     });
     return failed;
@@ -832,7 +832,7 @@ async function ensureBetBraSession(
   if (!session?.connected) {
     const failed: BetBraPlaceLayResult = {
       ok: false,
-      error: "Conecte a BetBra no app antes do Auto Lay",
+      error: "Conecte a Exchange no app antes do Auto Lay",
     };
     setLastResult({
       at: Date.now(),
@@ -843,8 +843,8 @@ async function ensureBetBraSession(
     });
     void nativeNotify({
       kind: "enter",
-      title: "BetBra desconectada",
-      body: "Abra Config → Conectar BetBra para Auto Lay",
+      title: "Exchange desconectada",
+      body: "Abra Config → Conectar Exchange para Auto Lay",
       tag: `tips3x3-betbra-session-${Date.now()}`,
     });
     return { ok: false, result: failed };

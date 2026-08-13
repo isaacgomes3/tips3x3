@@ -73,7 +73,7 @@ export default function DashboardHero({
           description="Plano completo para máxima performance."
           benefits={["Todos os recursos dos planos anteriores"]}
           markets={[
-            "Eventos Ramos · Assertividade 100%",
+            "Eventos Raros · Assertividade 100%",
             "Lucro Certo · Entrada 0 Risco",
           ]}
           marketsIntro="Mercados exclusivos"

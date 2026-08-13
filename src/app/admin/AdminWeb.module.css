@@ -1,0 +1,391 @@
+:global(html:not(.capacitor-native)) .root {
+  --admin-bg: #090b0c;
+  --admin-panel: #121517;
+  --admin-panel-soft: #171b1e;
+  --admin-border: rgba(255, 255, 255, 0.09);
+  --admin-muted: #8d9893;
+  --admin-text: #f5f7f6;
+  --admin-accent: #c7ff00;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 32px clamp(24px, 3vw, 56px) 56px;
+  color: var(--admin-text);
+  background:
+    radial-gradient(circle at 52% 18%, rgba(111, 163, 0, 0.11), transparent 32%),
+    var(--admin-bg);
+  font-family: var(--font-body), Arial, sans-serif;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-desktop-shell) {
+  width: 100%;
+  max-width: 1720px;
+  min-height: calc(100vh - 64px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--admin-border);
+  border-radius: 22px;
+  background: #0d1012;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-web-sidebar) {
+  min-height: calc(100vh - 64px);
+  padding: 26px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--admin-border);
+  background: #101416;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-web-brand) {
+  padding: 0 10px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-web-brand strong) {
+  color: var(--admin-accent);
+  font-size: 24px;
+  font-style: italic;
+  letter-spacing: -0.04em;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-web-brand span),
+:global(html:not(.capacitor-native)) .root :global(.admin-eyebrow) {
+  color: var(--admin-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-web-main) {
+  min-width: 0;
+  background: #0b0e10;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-web-sidebar-footer) {
+  margin-top: auto;
+  padding-top: 20px;
+  border-top: 1px solid var(--admin-border);
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-back-link) {
+  min-height: 42px;
+  padding: 0 13px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--admin-border);
+  border-radius: 10px;
+  color: var(--admin-text);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+:global(html:not(.capacitor-native)) .root,
+:global(html:not(.capacitor-native)) .root * {
+  box-sizing: border-box;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-topbar) {
+  width: 100%;
+  min-height: 126px;
+  margin: 0;
+  padding: 28px 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border: 0;
+  border-bottom: 1px solid var(--admin-border);
+  border-radius: 0;
+  background: #121618;
+  box-shadow: none;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-topbar h1) {
+  margin: 0 0 5px;
+  color: var(--admin-text);
+  font-size: clamp(28px, 2vw, 36px);
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-topbar p) {
+  margin: 0;
+  color: var(--admin-muted);
+  font-size: 14px;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-topbar-actions) {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-workspace) {
+  width: 100%;
+  max-width: 1680px;
+  margin: 24px auto 0;
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-tabs) {
+  position: static;
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 22px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-tab) {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--admin-muted);
+  font-size: 14px;
+  font-weight: 650;
+  text-align: left;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-tab:hover) {
+  color: var(--admin-text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-tab.is-active) {
+  border-color: rgba(199, 255, 0, 0.26);
+  background: rgba(199, 255, 0, 0.1);
+  color: var(--admin-accent);
+  box-shadow: inset 3px 0 0 var(--admin-accent);
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-content) {
+  width: 100%;
+  min-width: 0;
+  padding: 28px 34px 40px;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-grid) {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 20px;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-overview-columns) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-overview-column) {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-grid > .config-card) {
+  grid-column: span 6;
+  min-width: 0;
+  margin: 0;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.config-card) {
+  padding: 20px;
+  border: 1px solid var(--admin-border);
+  border-radius: 16px;
+  background: var(--admin-panel);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
+}
+
+:global(html:not(.capacitor-native)) .root :global(.config-card > h3) {
+  margin: 0;
+  color: var(--admin-accent);
+  font-size: 16px;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.config-lead),
+:global(html:not(.capacitor-native)) .root :global(.config-hint) {
+  color: var(--admin-muted);
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-kpis),
+:global(html:not(.capacitor-native)) .root :global(.admin-statement-summary) {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-kpi) {
+  min-height: 82px;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid rgba(199, 255, 0, 0.14);
+  border-radius: 12px;
+  background: #151d18;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-kpi span) {
+  color: #8cb19c;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-kpi strong) {
+  color: var(--admin-text);
+  font-size: 20px;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-kpi.is-ok strong) {
+  color: #52df86;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-kpi.is-down strong) {
+  color: #ff6658;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-grid > .admin-statement-summary),
+:global(html:not(.capacitor-native)) .root :global(.admin-grid > .admin-statement) {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-statement) {
+  padding: 0;
+  overflow: hidden;
+  background: #111416;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.stmt-head) {
+  padding: 22px 26px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid var(--admin-border);
+  background: linear-gradient(115deg, rgba(199, 255, 0, 0.07), transparent 45%);
+}
+
+:global(html:not(.capacitor-native)) .root :global(.stmt-filter) {
+  max-width: 420px;
+  margin: 20px 26px 0;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.stmt-total) {
+  margin: 16px 26px 0;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.stmt-table) {
+  width: 100%;
+  min-width: 980px;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-operations > .config-card),
+:global(html:not(.capacitor-native)) .root :global(.admin-settings > .config-card),
+:global(html:not(.capacitor-native)) .root :global(.admin-wallets > .config-card:first-child),
+:global(html:not(.capacitor-native)) .root :global(.admin-updates > .config-card:first-child) {
+  grid-column: 1 / -1;
+}
+
+:global(html:not(.capacitor-native)) .root :global(.admin-users) {
+  width: 100%;
+  margin: 0;
+}
+
+@media (max-width: 980px) {
+  :global(html:not(.capacitor-native)) .root {
+    padding: 20px;
+  }
+
+  :global(html:not(.capacitor-native)) .root :global(.admin-desktop-shell) {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+
+}
+
+@media (max-width: 760px) {
+  :global(html:not(.capacitor-native)) .root {
+    padding: 12px;
+  }
+
+  :global(html:not(.capacitor-native)) .root :global(.admin-topbar) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  :global(html:not(.capacitor-native)) .root :global(.admin-desktop-shell) {
+    display: block;
+    min-height: auto;
+    border-radius: 14px;
+  }
+
+  :global(html:not(.capacitor-native)) .root :global(.admin-web-sidebar) {
+    min-height: auto;
+    padding: 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--admin-border);
+  }
+
+  :global(html:not(.capacitor-native)) .root :global(.admin-web-brand),
+  :global(html:not(.capacitor-native)) .root :global(.admin-web-sidebar-footer) {
+    display: none;
+  }
+
+  :global(html:not(.capacitor-native)) .root :global(.admin-workspace) {
+    grid-template-columns: 1fr;
+  }
+
+  :global(html:not(.capacitor-native)) .root :global(.admin-tabs) {
+    position: static;
+    width: 100%;
+    display: flex;
+    overflow-x: auto;
+  }
+
+  :global(html:not(.capacitor-native)) .root :global(.admin-content),
+  :global(html:not(.capacitor-native)) .root :global(.admin-topbar) {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  :global(html:not(.capacitor-native)) .root :global(.admin-tab) {
+    width: auto;
+    min-width: max-content;
+  }
+
+  :global(html:not(.capacitor-native)) .root :global(.admin-grid),
+  :global(html:not(.capacitor-native)) .root :global(.admin-overview-columns),
+  :global(html:not(.capacitor-native)) .root :global(.admin-kpis),
+  :global(html:not(.capacitor-native)) .root :global(.admin-statement-summary) {
+    grid-template-columns: 1fr;
+  }
+
+  :global(html:not(.capacitor-native)) .root :global(.admin-grid > .config-card) {
+    grid-column: 1;
+  }
+}

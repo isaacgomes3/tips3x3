@@ -63,8 +63,8 @@ function phaseLabel(phase: string | undefined, layOpen: boolean) {
       ? "Aguardando Lay casar (ancorar)"
       : "Lay no book · aguardando casar";
   }
-  if (p === "awaiting_back") return "Lay casado · aguardando Back";
-  if (p === "back_sent") return "Back enviado";
+  if (p === "awaiting_back") return "Lay casado · propondo Back";
+  if (p === "back_sent") return "Back proposto · aguardando casar";
   if (layOpen) return "Oferta aberta no book";
   return "Operação";
 }
@@ -77,6 +77,8 @@ export type ExchangeOpsDeskProps = {
   reservedLc: number;
   /** Auto Lucro certo ligado — se off, não separa banca. */
   lucroCertoOn?: boolean;
+  surebetEdition?: boolean;
+  exchangeName?: string;
   openExposure: number;
   openOffers: number;
   offers: BetBraOfferCard[];
@@ -124,6 +126,8 @@ export function ExchangeOpsDesk({
   balanceError,
   reservedLc,
   lucroCertoOn = true,
+  surebetEdition = false,
+  exchangeName = "Exchange",
   openExposure,
   openOffers,
   offers,
@@ -157,6 +161,32 @@ export function ExchangeOpsDesk({
       (!activeTrade?.eventId || o.eventId === activeTrade.eventId),
   );
 
+  // O snapshot nativo pode sobreviver a atualização/reinstalação do APK e
+  // chegar como "pending" mesmo depois de a posição ter sido encerrada.
+  // A lista da Bolsa é a fonte da verdade: Lay + Back correspondidos no mesmo
+  // evento significam que não existe mais Lay aguardando casamento.
+  const matchedLayEvents = new Set(
+    offers
+      .filter((o) => o.side === "lay" && !o.open && (Number(o.remaining) || 0) < 0.01)
+      .map((o) => o.eventId || o.eventName)
+      .filter(Boolean),
+  );
+  const matchedBackEvents = new Set(
+    offers
+      .filter((o) => o.side === "back" && !o.open && (Number(o.remaining) || 0) < 0.01)
+      .map((o) => o.eventId || o.eventName)
+      .filter(Boolean),
+  );
+  const tradeEventKey = activeTrade?.eventId || activeTrade?.eventName || "";
+  const tradeCycleClosed =
+    Boolean(tradeEventKey) &&
+    matchedLayEvents.has(tradeEventKey) &&
+    matchedBackEvents.has(tradeEventKey);
+  const tradeLayMatched =
+    Boolean(tradeEventKey) && matchedLayEvents.has(tradeEventKey);
+  const exchangeHasNoPosition =
+    openOffers === 0 && openExposure <= 0.01 && offers.length === 0;
+
   const cards: BetBraOfferCard[] = [...offers].sort((a, b) => {
     if (a.open !== b.open) return a.open ? -1 : 1;
     if (a.side !== b.side) return a.side === "lay" ? -1 : 1;
@@ -165,10 +195,10 @@ export function ExchangeOpsDesk({
 
   return (
     <div className="ops-desk">
-      <section className="ops-exchange" aria-label="Bolsa Exchange BetBra">
+      <section className="ops-exchange" aria-label={exchangeName}>
         <div className="ops-exchange-head">
           <div>
-            <span className="ops-exchange-label">Bolsa Exchange</span>
+            <span className="ops-exchange-label">{exchangeName}</span>
             <span className="ops-exchange-status">
               <i className={connected ? "is-on" : "is-off"} />
               {connected ? "conectada" : "desconectada"}
@@ -192,7 +222,7 @@ export function ExchangeOpsDesk({
                 disabled={busy}
                 onClick={onConnect}
               >
-                {connected ? "Reconectar" : "Conectar BetBra"}
+                {connected ? `Reconectar ${exchangeName}` : `Conectar ${exchangeName}`}
               </button>
             ) : null}
             {onOpenSettings ? (
@@ -218,7 +248,7 @@ export function ExchangeOpsDesk({
             <span>Em jogo</span>
             <strong>{fmtBrl(inPlay)}</strong>
           </article>
-          <article>
+          {!surebetEdition ? <article>
             <span>
               {!lcOn
                 ? "Reserva LC (off)"
@@ -227,9 +257,9 @@ export function ExchangeOpsDesk({
                   : "Reserva Lucro certo"}
             </span>
             <strong>{fmtBrl(lcWalletLabel)}</strong>
-          </article>
+          </article> : null}
           <article>
-            <span>Banca livre (3x3 / ER)</span>
+            <span>{surebetEdition ? "Banca disponível para Surebet" : "Banca livre (3x3 / ER)"}</span>
             <strong className={free != null && free < 1 ? "is-warn" : ""}>
               {free != null ? fmtBrl(free) : "—"}
             </strong>
@@ -240,7 +270,9 @@ export function ExchangeOpsDesk({
           <p className="ops-hint is-warn">{balanceError}</p>
         ) : (
           <p className="ops-hint">
-            {!lcOn
+            {surebetEdition
+              ? "Surebet · banca integral disponível, descontando somente valores em jogo"
+              : !lcOn
               ? "Lucro certo desligado · banca sem separação de reserva"
               : lcInPlay > 0.5
                 ? "LC em curso · saldo restante disponível para 3x3 / Eventos raros"
@@ -257,7 +289,12 @@ export function ExchangeOpsDesk({
         ) : null}
       </section>
 
-      {activeTrade?.pending && !activeTrade?.matched && !activeTrade?.active ? (
+      {activeTrade?.pending &&
+      !activeTrade?.matched &&
+      !activeTrade?.active &&
+      !tradeLayMatched &&
+      !tradeCycleClosed &&
+      !exchangeHasNoPosition ? (
         <section className="ops-phase is-pending" aria-label="Lay aguardando casar">
           <header>
             <strong>Lay no book · aguardando casar</strong>
@@ -272,7 +309,21 @@ export function ExchangeOpsDesk({
         </section>
       ) : null}
 
-      {activeTrade?.active && activeTrade.matched !== false ? (
+      {activeTrade?.pending &&
+      !activeTrade?.active &&
+      tradeLayMatched &&
+      !tradeCycleClosed ? (
+        <section className="ops-phase" aria-label="Lay correspondido">
+          <header>
+            <strong>Lay casado · propondo Back</strong>
+            <span>{activeTrade.eventName || activeTrade.eventId || "Evento"}</span>
+          </header>
+        </section>
+      ) : null}
+
+      {activeTrade?.active &&
+      activeTrade.matched !== false &&
+      !tradeCycleClosed ? (
         <section className="ops-phase" aria-label="Entrada confirmada">
           <header>
             <strong>
@@ -333,7 +384,7 @@ export function ExchangeOpsDesk({
           <p className="ops-empty">
             {connected
               ? "Sem operações abertas. Quando o Lay entrar, aparece aqui com Id, odd, stake e resp./lucro."
-              : "Conecte a BetBra para ver Lay/Back como na Bolsa."}
+              : "Conecte a Exchange para ver Lay/Back."}
           </p>
         ) : (
           cards.map((o) => {

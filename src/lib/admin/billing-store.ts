@@ -72,15 +72,22 @@ function normalizeCycle(value: unknown): BillingCycle {
 }
 
 function normalizeStatus(value: unknown): SubscriptionStatus {
-  return value === "teste" || value === "inadimplente" || value === "cancelado"
+  return value === "inadimplente" || value === "cancelado"
     ? value
     : "ativo";
 }
 
 export function listSubscriptions(): Subscription[] {
-  return readFile().subscriptions.sort((a, b) =>
-    a.email.localeCompare(b.email),
-  );
+  return readFile()
+    .subscriptions.map((subscription) => ({
+      ...subscription,
+      // Assinaturas legadas em teste deixam de conceder acesso gratuito.
+      status:
+        String(subscription.status) === "teste"
+          ? ("cancelado" as const)
+          : subscription.status,
+    }))
+    .sort((a, b) => a.email.localeCompare(b.email));
 }
 
 export function listPayments(opts?: { email?: string; limit?: number }): Payment[] {

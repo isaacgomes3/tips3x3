@@ -518,6 +518,15 @@ export type RecordPlacedIndicationInput = {
   /** Responsabilidade real cobrada pela casa; sem ela, derivamos da stake. */
   liability?: number | null;
   expectedProfit?: number | null;
+  realizedProfit?: number | null;
+  appProduct?: "surebet-betbra" | "surebet-bolsa" | null;
+  marketName?: string | null;
+  surebetLegs?: Array<{
+    selection: string;
+    venue: "betbra" | "bolsa";
+    odds: number;
+    stake: number;
+  }>;
   /** "failed" registra a tentativa sem contaminar as métricas. */
   execStatus?: IndicationExecStatus | null;
   /** Passo do ciclo de vida que originou esta chamada. */
@@ -544,6 +553,7 @@ export function recordPlacedIndication(
   }
 
   const kind: IndicationKind =
+    input.kind === "surebet" ||
     input.kind === "lucro-certo" ||
     input.kind === "lay-3x3" ||
     input.kind === "eventos-raros"
@@ -586,6 +596,10 @@ export function recordPlacedIndication(
     if (input.minute != null) existing.minute = input.minute;
     if (layOdds > existing.layOdds) existing.layOdds = layOdds;
     if (userEmail && !existing.userEmail) existing.userEmail = userEmail;
+    if (input.appProduct) existing.appProduct = input.appProduct;
+    if (input.marketName) existing.marketName = input.marketName.slice(0, 100);
+    if (input.surebetLegs?.length === 3) existing.surebetLegs = input.surebetLegs;
+    if (input.realizedProfit != null) existing.realizedProfit = numOrNull(input.realizedProfit);
     // Uma confirmação do APK prevalece sobre uma tentativa anterior da fila
     // da extensão: a origem exibida deve ser de quem executou a operação.
     if (input.source === "apk") existing.source = "apk";
@@ -632,10 +646,13 @@ export function recordPlacedIndication(
   }
 
   const instantGreen =
-    kind === "lucro-certo" || Boolean(input.alreadyImpossible);
+    kind === "surebet" || kind === "lucro-certo" || Boolean(input.alreadyImpossible);
   const next: Indication = {
     id,
-    kind: instantGreen && kind !== "lay-3x3" ? "lucro-certo" : kind,
+    kind:
+      instantGreen && kind !== "lay-3x3" && kind !== "surebet"
+        ? "lucro-certo"
+        : kind,
     eventId,
     eventName:
       input.eventName || `${input.home ?? "?"} vs ${input.away ?? "?"}`,
@@ -659,6 +676,9 @@ export function recordPlacedIndication(
     execStatus,
     lastError: null,
     realizedProfit: null,
+    appProduct: input.appProduct ?? null,
+    marketName: input.marketName?.slice(0, 100) ?? null,
+    surebetLegs: input.surebetLegs?.length === 3 ? input.surebetLegs : [],
     events: [],
     layMatched:
       event?.type === "lay-matched" || (kind === "lay-3x3" && stake != null)
@@ -668,6 +688,7 @@ export function recordPlacedIndication(
           : null,
   };
   if (event) applyEvent(next, event);
+  if (input.realizedProfit != null) next.realizedProfit = numOrNull(input.realizedProfit);
   byId.set(id, next);
   data.items = trimItems([...byId.values()]);
   try {

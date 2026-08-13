@@ -43,6 +43,12 @@ export type AutoLayStatus = {
   autoOn?: boolean;
   running?: boolean;
   ok?: boolean;
+  managedInApk?: boolean;
+  surebetEdition?: boolean;
+  bolsaOnly?: boolean;
+  exchangeDisplayName?: string;
+  lucroCertoOn?: boolean;
+  reservedLucroCerto?: number;
 };
 
 export type AutoLaySettings = {
@@ -108,6 +114,7 @@ export type ActiveTradeSnapshot = {
 };
 
 interface AutoLayPlugin {
+  openSettings(): Promise<{ ok?: boolean }>;
   syncSettings(options: AutoLaySettings): Promise<AutoLayStatus>;
   start(): Promise<AutoLayStatus>;
   stop(): Promise<AutoLayStatus>;
@@ -116,6 +123,16 @@ interface AutoLayPlugin {
 }
 
 const AutoLay = registerPlugin<AutoLayPlugin>("AutoLay");
+
+export async function openAutoLaySettings(): Promise<boolean> {
+  if (!isNativeApp()) return false;
+  try {
+    const result = await AutoLay.openSettings();
+    return result?.ok !== false;
+  } catch {
+    return false;
+  }
+}
 
 /** Cache: FGS a correr → WebView não deve placeLay (evita ordem dupla). */
 let bgActive = false;
@@ -136,6 +153,15 @@ export async function refreshAutoLayBgStatus(): Promise<boolean> {
   } catch {
     bgActive = false;
     return false;
+  }
+}
+
+export async function getAutoLayNativeStatus(): Promise<AutoLayStatus | null> {
+  if (!isNativeApp()) return null;
+  try {
+    return await AutoLay.getStatus();
+  } catch {
+    return null;
   }
 }
 

@@ -1,4 +1,15 @@
-export type IndicationKind = "eventos-raros" | "lucro-certo" | "lay-3x3";
+export type IndicationKind =
+  | "eventos-raros"
+  | "lucro-certo"
+  | "lay-3x3"
+  | "surebet";
+export type SurebetProduct = "surebet-betbra" | "surebet-bolsa";
+export type SurebetLeg = {
+  selection: string;
+  venue: "betbra" | "bolsa";
+  odds: number;
+  stake: number;
+};
 export type IndicationResult = "pending" | "green" | "red";
 export type IndicationSource = "apk" | "painel" | "extensao" | "sistema";
 
@@ -67,4 +78,10 @@ export type Indication = {
   events?: IndicationEvent[];
   /** Lay confirmado na Bolsa (remaining ≈ 0). Ausente = legado / desconhecido. */
   layMatched?: boolean | null;
+  /** Produto Android que executou a entrada Surebet. */
+  appProduct?: SurebetProduct | null;
+  /** Match Odds ou Resultado do Primeiro Tempo. */
+  marketName?: string | null;
+  /** Três pontas efetivamente enviadas, com casa, odd e valor. */
+  surebetLegs?: SurebetLeg[];
 };

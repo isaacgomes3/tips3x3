@@ -79,7 +79,6 @@ export async function GET() {
       counts: {
         users: users.length,
         active: active.length,
-        trial: subscriptions.filter((s) => s.status === "teste").length,
         overdue: subscriptions.filter((s) => s.status === "inadimplente").length,
         cancelled: subscriptions.filter((s) => s.status === "cancelado").length,
         withoutPlan: users.filter(

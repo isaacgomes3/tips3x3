@@ -170,6 +170,8 @@ function candidateEntryReady(
   secondHalfOk: boolean,
   patternTimingOk: boolean,
   redCardBlocked: boolean,
+  stoppageRuleReady: boolean,
+  minimumGoalsNeeded: number | null,
 ): boolean {
   if (c.settledHit) return false;
 
@@ -184,19 +186,9 @@ function candidateEntryReady(
 
   if (redCardBlocked) return false;
   if (!bookOk(c)) return false;
-  if (!patternTimingOk) return false;
+  if (!stoppageRuleReady || minimumGoalsNeeded == null) return false;
   if (!c.stillPossible) return false;
-  if (!c.timeBlocked) return false;
-
-  if (
-    c.modelProb != null &&
-    c.modelEdge != null &&
-    !(c.modelEdge > 0 && c.modelProb < c.impliedProb * 0.85) &&
-    c.modelEdge <= 0
-  ) {
-    return false;
-  }
-  return true;
+  return c.goalsNeeded >= minimumGoalsNeeded && c.remainingMinutes > 0;
 }
 
 function buildLiquidityIndicator(
@@ -441,6 +433,12 @@ export function buildEventosRarosSnapshot(opts: {
   redCards?: number | null;
   /** Bloqueios externos (amistoso, minuto conflitante, dados incompletos). */
   hardBlockers?: string[];
+  /** Acréscimos oficiais do 2º tempo informados pela FotMob. */
+  stoppage?: {
+    active: boolean;
+    addedTime: number | null;
+    elapsed: number | null;
+  } | null;
 }): EventosRarosSnapshot {
   const isLive = opts.isLive === true;
   const hs =
@@ -462,6 +460,21 @@ export function buildEventosRarosSnapshot(opts: {
   const hardBlockers = (opts.hardBlockers ?? []).filter(Boolean);
   const indicationBlocked = hardBlockers.length > 0;
   const blockers: string[] = [...hardBlockers];
+  const addedTime = opts.stoppage?.addedTime ?? null;
+  const stoppageElapsed = opts.stoppage?.elapsed ?? null;
+  const inSecondHalfStoppage = opts.stoppage?.active === true;
+  const confirmedAddedTime =
+    addedTime != null && Number.isInteger(addedTime) && addedTime > 0;
+  const stoppageAllowed =
+    confirmedAddedTime && addedTime != null && addedTime < 8;
+  const minimumGoalsNeeded =
+    stoppageAllowed ? (addedTime <= 3 ? 2 : 3) : null;
+  const stoppageRemaining =
+    confirmedAddedTime && stoppageElapsed != null
+      ? Math.max(addedTime - stoppageElapsed, 0)
+      : null;
+  const stoppageRuleReady =
+    inSecondHalfStoppage && stoppageAllowed && (stoppageRemaining ?? 0) > 0;
 
   if (!isLive) blockers.push("Somente live");
   if (hs == null || as == null) blockers.push("Sem placar live");
@@ -470,11 +483,17 @@ export function buildEventosRarosSnapshot(opts: {
       blockers.push("Dados incompletos (placar/minuto)");
     }
   }
+  if (isLive && !inSecondHalfStoppage) {
+    blockers.push("Aguardando acréscimos após os 90 minutos");
+  } else if (isLive && !confirmedAddedTime) {
+    blockers.push("Total de acréscimos não informado · filtro bloqueado");
+  } else if (isLive && addedTime != null && addedTime >= 8) {
+    blockers.push(`Acréscimos de ${addedTime}' · 8+ não recomenda`);
+  } else if (isLive && stoppageRemaining === 0) {
+    blockers.push("Acréscimos encerrados · sem recomendação");
+  }
 
-  const remainingMinutes =
-    minute != null
-      ? Math.max(EVENTOS_RAROS.fullTimeMinute - minute, 1)
-      : EVENTOS_RAROS.fullTimeMinute;
+  const remainingMinutes = stoppageRemaining ?? 0;
 
   /** Live + placar. */
   const eventLiveOk = isLive && hs != null && as != null;
@@ -625,6 +644,8 @@ export function buildEventosRarosSnapshot(opts: {
         secondHalfOk,
         patternTimingOk,
         redCardBlocked,
+        stoppageRuleReady,
+        minimumGoalsNeeded,
       ),
   }));
 
@@ -682,6 +703,16 @@ export function buildEventosRarosSnapshot(opts: {
 
   // Blockers: não poluir se já há entrada impossível pronta
   if (!hasImpossibleEntry) {
+    if (
+      stoppageRuleReady &&
+      minimumGoalsNeeded != null &&
+      bestPossible &&
+      bestPossible.goalsNeeded < minimumGoalsNeeded
+    ) {
+      blockers.push(
+        `Acréscimos de ${addedTime}' exigem ${minimumGoalsNeeded}+ gols para acontecer`,
+      );
+    }
     if (!best || analyzed.length === 0) {
       blockers.push("Sem CS com lay ≥ 100");
     }

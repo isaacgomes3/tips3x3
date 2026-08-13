@@ -18,7 +18,7 @@ export type StoredUser = {
   name?: string;
   /** Master tem acesso a todos os filtros inseridos pelo admin, sem restrição de faixa de crédito. */
   role?: UserRole;
-  /** Teste grátis 48h — data de ativação. Só pode ser ativado 1x por usuário, para sempre. */
+  /** Campo legado, mantido apenas para ler arquivos antigos. */
   trialStartedAt?: string;
   /** E-mail do afiliado que indicou este usuário (código ref). */
   referredBy?: string;
@@ -32,7 +32,6 @@ export type PublicUser = {
   active: boolean;
   name?: string;
   role: UserRole;
-  trialStartedAt?: string | null;
 };
 
 /**
@@ -92,7 +91,6 @@ function toPublic(u: StoredUser): PublicUser {
     active: u.active !== false,
     name: u.name,
     role: isMasterEmail(u.email) ? "master" : "user",
-    trialStartedAt: u.trialStartedAt ?? null,
   };
 }
 
@@ -107,6 +105,18 @@ export function isMasterEmail(email: string | null | undefined): boolean {
   if (ADDITIONAL_MASTER_EMAILS.has(key)) return true;
   const stored = readFile().users.find((u) => u.email === key);
   return Boolean(stored && stored.role === "master");
+}
+
+/** Todos os masters conhecidos, incluindo os configurados fora de users.json. */
+export function listMasterEmails(): string[] {
+  const emails = new Set<string>([
+    normalizeEmail(getMasterCredentials().email),
+    ...ADDITIONAL_MASTER_EMAILS,
+  ]);
+  for (const user of readFile().users) {
+    if (user.role === "master") emails.add(normalizeEmail(user.email));
+  }
+  return [...emails].filter(Boolean);
 }
 
 /** Concede/revoga o papel de master a um usuário provisionado (não o env master). */
@@ -124,35 +134,6 @@ export function setUserRole(
   data.users[idx] = { ...data.users[idx]!, role };
   writeFileAtomic(data);
   return { ok: true, user: toPublic(data.users[idx]!) };
-}
-
-/** Data (ISO) em que o usuário ativou o teste grátis — null se nunca ativou. */
-export function getUserTrialStartedAt(email: string): string | null {
-  return findUser(email)?.trialStartedAt ?? null;
-}
-
-/**
- * Ativa o teste grátis 48h para o usuário — 1x só, para sempre. Ativação é
- * feita pelo próprio usuário no seu ambiente (dashboard/config).
- */
-export function activateUserTrial(
-  email: string,
-): { ok: true; startedAt: string } | { ok: false; error: string } {
-  const key = normalizeEmail(email);
-  if (isMasterEmail(key)) {
-    return { ok: false, error: "Master já tem acesso completo aos filtros." };
-  }
-  const data = readFile();
-  const idx = data.users.findIndex((u) => u.email === key);
-  if (idx < 0) return { ok: false, error: "Usuário não encontrado." };
-  const existing = data.users[idx]!;
-  if (existing.trialStartedAt) {
-    return { ok: false, error: "O teste grátis de 48h já foi utilizado." };
-  }
-  const startedAt = new Date().toISOString();
-  data.users[idx] = { ...existing, trialStartedAt: startedAt };
-  writeFileAtomic(data);
-  return { ok: true, startedAt };
 }
 
 export function listUsers(): PublicUser[] {

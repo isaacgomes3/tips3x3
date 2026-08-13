@@ -13,7 +13,6 @@ import {
   LogOut,
   Menu,
   Plus,
-  Settings,
   Users,
   X,
   type LucideIcon,
@@ -40,7 +39,6 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, view: "dashboard" },
   { label: "Automação", icon: Bot, view: "jogos" },
   { label: "Estatísticas", icon: BarChart3, view: "estatisticas" },
-  { label: "Configurações", icon: Settings, view: "config" },
   { label: "Planos", icon: Crown, view: "carteira" },
   { label: "Downloads", icon: Download, view: "downloads" },
   { label: "Afiliados", icon: Users, view: "afiliados" },
@@ -55,7 +53,6 @@ const VIEW_TITLES: Partial<Record<DashboardShellView, { title: string; subtitle:
   alertas: { title: "Alertas", subtitle: "Ofertas e operações recentes" },
   estatisticas: { title: "Estatísticas", subtitle: "Desempenho das suas operações" },
   carteira: { title: "Carteira", subtitle: "Créditos e depósitos" },
-  config: { title: "Configurações", subtitle: "Filtros estratégicos e conta" },
   afiliados: { title: "Afiliados", subtitle: "Seus indicados e link de indicação" },
   downloads: { title: "Downloads", subtitle: "APK e extensão disponíveis para o seu plano" },
 };
@@ -206,13 +203,6 @@ export default function DashboardShell({
             <br />
             Fale com nosso time!
           </p>
-          <button
-            type="button"
-            className="dsh-support-cta"
-            onClick={() => go("config")}
-          >
-            Abrir chat
-          </button>
         </div>
 
         <button type="button" className="dsh-nav-logout" onClick={onLogout}>

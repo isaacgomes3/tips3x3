@@ -112,7 +112,7 @@ export default function AdminUpdates() {
   }
 
   return (
-    <div className="admin-grid">
+    <div className="admin-grid admin-updates">
       <section className="config-card">
         <h3>Atualizações</h3>
         <p className="config-lead">

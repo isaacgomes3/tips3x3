@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import {
   COOKIE_NAME,
-  getMasterCredentials,
   verifySessionToken,
 } from "@/lib/auth/session";
+import { isMasterEmail } from "@/lib/auth/users-store";
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -20,7 +20,7 @@ export async function proxy(request: NextRequest) {
 
   if (pathname.startsWith("/admin")) {
     if (!session) return redirectToLogin();
-    if (session.email.toLowerCase() !== getMasterCredentials().email) {
+    if (!isMasterEmail(session.email)) {
       const url = request.nextUrl.clone();
       url.pathname = "/app";
       url.search = "";

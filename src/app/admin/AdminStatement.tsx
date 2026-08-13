@@ -18,6 +18,8 @@ type StatementResponse = {
   error?: string;
 };
 
+export type StatementSummary = NonNullable<StatementResponse["totals"]>;
+
 const SOURCE_LABEL: Record<string, string> = {
   apk: "app",
   extensao: "extensão",
@@ -29,22 +31,25 @@ const SOURCE_LABEL: Record<string, string> = {
 export default function AdminStatement({
   email,
   onClose,
+  onSummaryChange,
 }: {
   email: string;
   onClose: () => void;
+  onSummaryChange?: (summary: StatementSummary) => void;
 }) {
   const [data, setData] = useState<StatementResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   /** null = dia mais recente; "all" = todos os dias. */
   const [dayFilter, setDayFilter] = useState<string | null>(null);
+  const [product, setProduct] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         const res = await fetch(
-          `/api/admin/statement?email=${encodeURIComponent(email)}`,
+          `/api/admin/statement?email=${encodeURIComponent(email)}&product=${encodeURIComponent(product)}`,
         );
         const json = (await res.json()) as StatementResponse;
         if (cancelled) return;
@@ -64,7 +69,7 @@ export default function AdminStatement({
     return () => {
       cancelled = true;
     };
-  }, [email]);
+  }, [email, product]);
 
   const days = data?.days ?? [];
   const selectedDay = dayFilter ?? days[0]?.dayKey ?? "";
@@ -72,9 +77,15 @@ export default function AdminStatement({
     selectedDay === "all"
       ? days
       : days.filter((d) => d.dayKey === selectedDay);
+  const selectedSummary =
+    selectedDay === "all" ? data?.totals : visibleDays[0]?.totals;
+
+  useEffect(() => {
+    if (selectedSummary) onSummaryChange?.(selectedSummary);
+  }, [onSummaryChange, selectedSummary]);
 
   return (
-    <section className="config-card">
+    <section className="config-card admin-statement">
       <div className="stmt-head">
         <div>
           <h3>Extrato · {email}</h3>
@@ -91,6 +102,17 @@ export default function AdminStatement({
       {error ? <p className="users-admin-msg is-down">{error}</p> : null}
       {loading && !data ? <p className="config-hint">Carregando…</p> : null}
 
+      <div className="admin-form stmt-filter">
+        <label className="config-field">
+          <span>Aplicativo</span>
+          <select value={product} onChange={(e) => setProduct(e.target.value)}>
+            <option value="">Todos</option>
+            <option value="surebet-betbra">Surebet BetBra</option>
+            <option value="surebet-bolsa">Surebet Bolsa</option>
+          </select>
+        </label>
+      </div>
+
       {data && days.length === 0 ? (
         <p className="config-hint">
           Nenhuma operação casada registrada para este cliente.
@@ -99,7 +121,7 @@ export default function AdminStatement({
 
       {days.length > 0 ? (
         <>
-          <div className="admin-form">
+          <div className="admin-form stmt-filter">
             <label className="config-field">
               <span>Dia</span>
               <select
@@ -117,7 +139,7 @@ export default function AdminStatement({
           </div>
 
           {data?.totals ? (
-            <p className="config-hint">
+            <p className="config-hint stmt-total">
               Total do cliente: {data.totals.count} operações ·{" "}
               {data.totals.green} green · {data.totals.red} red
               {data.totals.pending > 0
@@ -175,10 +197,18 @@ export default function AdminStatement({
                               ? ` · ${SOURCE_LABEL[row.source] ?? row.source}`
                               : ""}
                           </span>
+                          {row.appProduct ? (
+                            <span>{row.appProduct === "surebet-bolsa" ? "Surebet Bolsa" : "Surebet BetBra"}</span>
+                          ) : null}
                         </td>
                         <td>
                           <strong>{row.market}</strong>
                           <span>{row.strategyLabel}</span>
+                          {row.legs.map((leg, index) => (
+                            <span key={`${row.id}-leg-${index}`}>
+                              {leg.selection} · {leg.venue === "bolsa" ? "Bolsa" : "BetBra"} · x{leg.odds} · {brl(leg.stake)}
+                            </span>
+                          ))}
                         </td>
                         <td>
                           <strong>{brl(row.stake ?? row.liability ?? 0)}</strong>

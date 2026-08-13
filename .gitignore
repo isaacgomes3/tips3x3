@@ -17,3 +17,6 @@ mobile/android/.gradle/
 mobile/android/app/build/
 mobile/android/build/
 mobile/.next/
+mobile/android/capacitor-cordova-android-plugins/
+next-env.d.ts
+tsconfig.tsbuildinfo

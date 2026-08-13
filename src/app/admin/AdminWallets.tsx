@@ -100,7 +100,7 @@ export default function AdminWallets() {
   const config = data?.config;
 
   return (
-    <div className="admin-grid">
+    <div className="admin-grid admin-wallets">
       <section className="config-card">
         <h3>Crédito dos clientes</h3>
         <p className="config-lead">

@@ -28,7 +28,8 @@ export async function GET(request: Request) {
     const kind =
       kindRaw === "eventos-raros" ||
       kindRaw === "lucro-certo" ||
-      kindRaw === "lay-3x3"
+      kindRaw === "lay-3x3" ||
+      kindRaw === "surebet"
         ? (kindRaw as IndicationKind)
         : undefined;
     const limitRaw = Number(searchParams.get("limit") ?? 200);
@@ -92,6 +93,15 @@ export async function POST(request: Request) {
       stake?: number;
       liability?: number;
       expectedProfit?: number;
+      realizedProfit?: number;
+      appProduct?: string;
+      marketName?: string;
+      surebetLegs?: Array<{
+        selection?: string;
+        venue?: string;
+        odds?: number;
+        stake?: number;
+      }>;
       source?: string;
       execStatus?: string;
       event?: {
@@ -121,7 +131,7 @@ export async function POST(request: Request) {
 
     const kindRaw = String(body.kind || "");
     const kind: IndicationKind =
-      kindRaw === "lucro-certo" || kindRaw === "lay-3x3"
+      kindRaw === "surebet" || kindRaw === "lucro-certo" || kindRaw === "lay-3x3"
         ? kindRaw
         : body.alreadyImpossible
           ? "lucro-certo"
@@ -143,6 +153,19 @@ export async function POST(request: Request) {
       stake: body.stake,
       liability: body.liability,
       expectedProfit: body.expectedProfit,
+      realizedProfit: body.realizedProfit,
+      appProduct:
+        body.appProduct === "surebet-bolsa" ? "surebet-bolsa"
+          : body.appProduct === "surebet-betbra" ? "surebet-betbra" : null,
+      marketName: body.marketName,
+      surebetLegs: Array.isArray(body.surebetLegs)
+        ? body.surebetLegs.map((leg) => ({
+            selection: String(leg.selection || ""),
+            venue: leg.venue === "bolsa" ? "bolsa" as const : "betbra" as const,
+            odds: Number(leg.odds),
+            stake: Number(leg.stake),
+          }))
+        : undefined,
       execStatus: body.execStatus === "failed" ? "failed" : "placed",
       event,
     });

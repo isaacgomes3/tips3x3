@@ -20,6 +20,14 @@ export type MatchIntel = {
   matchName: string;
   competition?: string;
   status?: string;
+  /** Relógio oficial dos acréscimos, quando a FotMob informa o total concedido. */
+  stoppage?: {
+    active: boolean;
+    addedTime: number | null;
+    elapsed: number | null;
+    maxTime: number | null;
+    raw: string | null;
+  };
   scoreLabel?: string;
   xg: {
     home: number | null;

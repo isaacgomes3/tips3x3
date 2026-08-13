@@ -216,6 +216,35 @@ export function addWalletAdjustment(input: {
   return { ok: true, entry };
 }
 
+const MASTER_CREDIT_MARKER = "sistema:credito-master-v1";
+
+/** Insere uma única vez o crédito inicial de master. */
+export function ensureMasterWalletCredit(
+  email: string,
+  amount = 100,
+): WalletSummary {
+  const key = normalizeEmail(email);
+  const credit = brlRound(Math.max(0, Number(amount) || 0));
+  const data = readFile();
+  const alreadyCredited = data.entries.some(
+    (entry) =>
+      entry.email === key && entry.createdBy === MASTER_CREDIT_MARKER,
+  );
+  if (key && credit > 0 && !alreadyCredited) {
+    data.entries.push({
+      id: newId("wal"),
+      email: key,
+      kind: "ajuste",
+      amount: credit,
+      at: new Date().toISOString(),
+      note: `Crédito inicial master de R$ ${credit.toFixed(2)}`,
+      createdBy: MASTER_CREDIT_MARKER,
+    });
+    writeFileAtomic(data);
+  }
+  return getWalletSummary(key);
+}
+
 /**
  * Taxa da tips3x3 sobre o lucro de uma operação casada.
  * Idempotente por operationId — webhook, APK e painel podem repetir a chamada.

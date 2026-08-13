@@ -6,7 +6,6 @@
 import { getAppConfig } from "@/lib/admin/app-config-store";
 import { isMasterEmail } from "@/lib/auth/users-store";
 import { isLayMatchedOnExchange } from "@/lib/indications-status";
-import { isTrialActive } from "@/lib/wallet/trial";
 import type { Indication } from "@/lib/indications-types";
 import { brlRound } from "@/lib/wallet/wallet-types";
 import {
@@ -99,13 +98,11 @@ export function chargeMatchedOperationFee(
 /**
  * Cliente sem crédito não pode operar a automação — regra obrigatória,
  * independente do toggle de admin (que hoje só afeta o aviso no painel).
- * Master nunca é bloqueado por saldo. Teste grátis 48h também libera,
- * mesmo com carteira zerada.
+ * Master nunca é bloqueado por saldo.
  */
 export function isWalletBlocked(email: string | null | undefined): boolean {
   const key = email?.trim().toLowerCase();
   if (!key) return false;
   if (isMasterEmail(key)) return false;
-  if (isTrialActive(key)) return false;
   return getWalletSummary(key).blocked;
 }

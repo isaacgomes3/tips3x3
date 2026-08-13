@@ -4,9 +4,10 @@ import { getAppConfig } from "@/lib/admin/app-config-store";
 import { isMasterEmail } from "@/lib/auth/users-store";
 import { isAutoConfirmGateway, isLucReady } from "@/lib/wallet/luc-paguei";
 import { getCreditTier } from "@/lib/wallet/credit-tier";
-import { effectiveCreditTier, getTrialInfo } from "@/lib/wallet/trial";
+import { effectiveCreditTier } from "@/lib/wallet/trial";
 import {
   getWalletSummary,
+  ensureMasterWalletCredit,
   listDeposits,
   listWalletEntries,
 } from "@/lib/wallet/wallet-store";
@@ -22,11 +23,11 @@ export async function GET(request: Request) {
 
   const email = auth.session.email;
   const config = getAppConfig();
-  const summary = getWalletSummary(email);
   const master = isMasterEmail(email);
-  const trial = getTrialInfo(email);
-  // Sem crédito, a automação não pode operar — master e teste grátis não são bloqueados.
-  const blocked = master || trial.active ? false : summary.blocked;
+  const summary = master
+    ? ensureMasterWalletCredit(email)
+    : getWalletSummary(email);
+  const blocked = master ? false : summary.blocked;
 
   return NextResponse.json({
     ok: true,
@@ -36,7 +37,6 @@ export async function GET(request: Request) {
       tier: effectiveCreditTier(email, getCreditTier(summary.balance), master),
       isMaster: master,
     },
-    trial,
     entries: listWalletEntries({ email, limit: 100 }),
     deposits: listDeposits({ email, limit: 20 }),
     config: {

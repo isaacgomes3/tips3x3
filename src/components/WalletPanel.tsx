@@ -3,13 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Deposit, WalletEntry } from "@/lib/wallet/wallet-types";
 
-type TrialInfo = {
-  used: boolean;
-  startedAt: string | null;
-  expiresAt: string | null;
-  active: boolean;
-};
-
 type WalletPayload = {
   ok: boolean;
   wallet: {
@@ -22,7 +15,6 @@ type WalletPayload = {
   };
   entries: WalletEntry[];
   deposits: Deposit[];
-  trial?: TrialInfo;
   config: {
     feePct: number;
     commissionPct: number;
@@ -83,16 +75,8 @@ export default function WalletPanel({
   const [charge, setCharge] = useState<DepositPayload | null>(null);
   const [copied, setCopied] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [activatingTrial, setActivatingTrial] = useState(false);
-  const [trialMsg, setTrialMsg] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
   const pollRef = useRef<number | null>(null);
   const depositRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
 
   useEffect(() => {
     if (focus !== "deposito") return;
@@ -200,42 +184,8 @@ export default function WalletPanel({
 
   const wallet = data?.wallet;
   const config = data?.config;
-  const trial = data?.trial;
   const min = config?.minDeposit ?? 10;
   const chargeDeposit = charge?.deposit;
-
-  const trialRemainingMs = trial?.active && trial.expiresAt
-    ? Date.parse(trial.expiresAt) - now
-    : 0;
-  const trialCountdown =
-    trialRemainingMs > 0
-      ? (() => {
-          const totalSec = Math.floor(trialRemainingMs / 1000);
-          const h = String(Math.floor(totalSec / 3600)).padStart(2, "0");
-          const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, "0");
-          const s = String(totalSec % 60).padStart(2, "0");
-          return `${h}:${m}:${s}`;
-        })()
-      : null;
-
-  const activateTrial = async () => {
-    setActivatingTrial(true);
-    setTrialMsg(null);
-    try {
-      const res = await fetch("/api/wallet/trial", { method: "POST" });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        setTrialMsg(json.error || "Não foi possível ativar o teste grátis.");
-        return;
-      }
-      setTrialMsg("Teste grátis de 48h ativado! Todos os filtros liberados.");
-      refresh();
-    } catch {
-      setTrialMsg("Falha de rede ao ativar o teste grátis.");
-    } finally {
-      setActivatingTrial(false);
-    }
-  };
 
   return (
     <div className="panel-block config-panel is-wallet">
@@ -269,52 +219,6 @@ export default function WalletPanel({
         ) : null}
         {error ? <p className="users-admin-msg is-down">{error}</p> : null}
       </section>
-
-      {!wallet?.isMaster ? (
-        <section className="config-card">
-          <h3>Teste grátis 48h</h3>
-          {trial?.active ? (
-            <>
-              <p className="config-lead">
-                Todos os filtros estão liberados durante o teste grátis.
-              </p>
-              <div className="admin-kpis">
-                <div className="admin-kpi is-ok">
-                  <span>Tempo restante</span>
-                  <strong>{trialCountdown ?? "00:00:00"}</strong>
-                </div>
-              </div>
-            </>
-          ) : trial?.used ? (
-            <p className="config-hint">
-              Teste grátis já utilizado. Faça um depósito para liberar os
-              filtros pela sua faixa de crédito.
-            </p>
-          ) : (
-            <>
-              <p className="config-lead">
-                Libere todos os filtros por 48h, uma única vez, para testar a
-                automação sem restrição de faixa de crédito.
-              </p>
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={activatingTrial}
-                onClick={() => void activateTrial()}
-              >
-                {activatingTrial ? "Ativando…" : "Ativar teste grátis de 48h"}
-              </button>
-            </>
-          )}
-          {trialMsg ? (
-            <p
-              className={`users-admin-msg ${trial?.active ? "is-up" : "is-down"}`}
-            >
-              {trialMsg}
-            </p>
-          ) : null}
-        </section>
-      ) : null}
 
       <section className="config-card" ref={depositRef}>
         <h3>Depositar por PIX</h3>

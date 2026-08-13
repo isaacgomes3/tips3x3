@@ -20,6 +20,7 @@ const STRATEGY_LABEL: Record<IndicationKind, string> = {
   "lay-3x3": "Lay 3x3",
   "eventos-raros": "Eventos raros",
   "lucro-certo": "Lucro certo",
+  surebet: "Surebet",
 };
 
 export type StatementRow = {
@@ -47,6 +48,8 @@ export type StatementRow = {
   result: "green" | "red" | "pending";
   /** null enquanto o jogo corre sem Back casado. */
   profit: number | null;
+  appProduct: string | null;
+  legs: Array<{ selection: string; venue: string; odds: number; stake: number }>;
 };
 
 export type StatementDay = {
@@ -106,7 +109,7 @@ function toRow(item: Indication): StatementRow {
   const backEvent = [...events].reverse().find((e) => e.type === "back-sent");
   const greenEvent = [...events].reverse().find((e) => e.type === "green");
 
-  const closed = Boolean(backEvent);
+  const closed = item.kind === "surebet" || Boolean(backEvent);
   const result: StatementRow["result"] =
     item.result === "green" || greenEvent
       ? "green"
@@ -137,7 +140,10 @@ function toRow(item: Indication): StatementRow {
     dayKey: dayKeyFmt.format(at),
     date: dateFmt.format(at),
     time: timeFmt.format(at),
-    market: `Placar correto ${item.scoreLabel}`,
+    market:
+      item.kind === "surebet"
+        ? item.marketName || item.scoreLabel
+        : `Placar correto ${item.scoreLabel}`,
     strategy: item.kind,
     strategyLabel: STRATEGY_LABEL[item.kind] ?? item.kind,
     source: item.source ?? null,
@@ -148,6 +154,8 @@ function toRow(item: Indication): StatementRow {
     closed,
     result,
     profit,
+    appProduct: item.appProduct ?? null,
+    legs: Array.isArray(item.surebetLegs) ? item.surebetLegs : [],
   };
 }
 

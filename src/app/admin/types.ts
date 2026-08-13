@@ -40,7 +40,6 @@ export type AdminOverview = {
     counts: {
       users: number;
       active: number;
-      trial: number;
       overdue: number;
       cancelled: number;
       withoutPlan: number;

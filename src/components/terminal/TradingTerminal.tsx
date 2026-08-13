@@ -362,6 +362,8 @@ export type ExchangeSnapshot = {
   activeTrade?: ActiveTradeSnapshot | null;
   reservedLc?: number;
   lucroCertoOn?: boolean;
+  surebetEdition?: boolean;
+  exchangeName?: string;
   lastLay: null | {
     at: number;
     ok: boolean;
@@ -485,6 +487,8 @@ export function TradingTerminal({
           balanceError={exchange.balanceError}
           reservedLc={exchange.reservedLc ?? 0}
           lucroCertoOn={exchange.lucroCertoOn !== false}
+          surebetEdition={exchange.surebetEdition}
+          exchangeName={exchange.exchangeName}
           openExposure={exchange.openExposure ?? 0}
           openOffers={exchange.openOffers}
           offers={exchange.offers ?? []}
@@ -584,7 +588,7 @@ export function TradingTerminal({
             }`}
           >
             {usingExchangeBankroll
-              ? "Saldo real BetBra Exchange"
+              ? "Saldo real da Exchange"
               : `${fmtPct(todayBankrollChangePct, true)} Hoje · cadastro manual`}
           </span>
         </article>
@@ -639,7 +643,7 @@ export function TradingTerminal({
             </header>
             {!usingExchangeBankroll ? (
               <p className="term-hint" style={{ marginTop: 0 }}>
-                Cadastro/histórico do painel (Central). Conecte a BetBra no APK
+                Cadastro/histórico do painel (Central). Conecte a Exchange no APK
                 para usar o saldo real.
               </p>
             ) : null}
