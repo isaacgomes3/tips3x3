@@ -49,7 +49,7 @@ public class BetBraLoginActivity extends AppCompatActivity {
     hint.setTextSize(13f);
 
     done = new Button(this);
-    done.setText("Pronto — voltar ao Tips3x3");
+    done.setText("Pronto — voltar ao " + appDisplayName());
     done.setOnClickListener(v -> finishWithToken());
 
     web = new WebView(this);
@@ -172,6 +172,11 @@ public class BetBraLoginActivity extends AppCompatActivity {
     service.setAction(AutoLayForegroundService.ACTION_START);
     if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(service);
     else startService(service);
+  }
+
+  private static String appDisplayName() {
+    if (!BuildConfig.SUREBET_ONLY) return "Tips3x3";
+    return BuildConfig.BOLSA_ONLY ? "Surebet Bolsa" : "Surebet BetBra";
   }
 
   private static Double parseJsNumber(String value) {

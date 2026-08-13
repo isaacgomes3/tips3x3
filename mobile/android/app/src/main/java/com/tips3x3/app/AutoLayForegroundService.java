@@ -176,6 +176,11 @@ public class AutoLayForegroundService extends Service {
     return BuildConfig.BOLSA_ONLY ? "Bolsa de Aposta" : "BetBra";
   }
 
+  private static String appDisplayName() {
+    if (!BuildConfig.SUREBET_ONLY) return "Tips3x3";
+    return BuildConfig.BOLSA_ONLY ? "Surebet Bolsa" : "Surebet BetBra";
+  }
+
   static SharedPreferences prefs(Context ctx) {
     return ctx.getApplicationContext().getSharedPreferences(PREFS, MODE_PRIVATE);
   }
@@ -338,9 +343,7 @@ public class AutoLayForegroundService extends Service {
 
     return new NotificationCompat.Builder(this, CHANNEL_FG)
         .setContentTitle(
-            BuildConfig.SUREBET_ONLY
-                ? "Tips3x3 · Surebet " + (BuildConfig.BOLSA_ONLY ? "Bolsa" : "BetBra")
-                : "Tips3x3 · Auto Lay")
+            BuildConfig.SUREBET_ONLY ? appDisplayName() : "Tips3x3 · Auto Lay")
         .setContentText(text)
         .setSmallIcon(R.drawable.ic_stat_tips3x3)
         .setContentIntent(pi)
@@ -1395,8 +1398,11 @@ public class AutoLayForegroundService extends Service {
     Notification n =
         new NotificationCompat.Builder(this, CHANNEL_SESSION)
             .setSmallIcon(R.drawable.ic_stat_tips3x3)
-            .setContentTitle(exchangeName() + " desconectada")
-            .setContentText("O login da sua conta caiu. Abra o Tips3x3 e toque em Reconectar.")
+            .setContentTitle(appDisplayName() + " · " + exchangeName() + " desconectada")
+            .setContentText(
+                "O login da sua conta caiu. Abra o "
+                    + appDisplayName()
+                    + " e toque em Reconectar.")
             .setContentIntent(pi)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -1410,7 +1416,7 @@ public class AutoLayForegroundService extends Service {
     Notification n =
         new NotificationCompat.Builder(this, CHANNEL_SESSION)
             .setSmallIcon(R.drawable.ic_stat_tips3x3)
-            .setContentTitle("Tips3x3 · notificações funcionando")
+            .setContentTitle(appDisplayName() + " · notificações funcionando")
             .setContentText("O monitor do APK está ativo neste aparelho.")
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -2682,7 +2688,7 @@ public class AutoLayForegroundService extends Service {
     Uri sound = notificationSoundUri();
     NotificationCompat.Builder b =
         new NotificationCompat.Builder(this, channel)
-            .setContentTitle(title)
+            .setContentTitle(BuildConfig.SUREBET_ONLY ? appDisplayName() + " · " + title : title)
             .setContentText(body)
             .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
             .setSmallIcon(R.drawable.ic_stat_tips3x3)
@@ -2762,7 +2768,7 @@ public class AutoLayForegroundService extends Service {
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     Notification n =
         new NotificationCompat.Builder(this, CHANNEL_RESULT)
-            .setContentTitle(title)
+            .setContentTitle(BuildConfig.SUREBET_ONLY ? appDisplayName() + " · " + title : title)
             .setContentText(body)
             .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
             .setSmallIcon(R.drawable.ic_stat_tips3x3)
