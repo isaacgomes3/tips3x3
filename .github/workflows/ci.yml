@@ -77,22 +77,31 @@ jobs:
           echo "APK_VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
-      - name: Build debug APK
+      - name: Build Surebet debug APKs
         working-directory: mobile/android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleSurebetDebug assembleSurebetBolsaDebug --no-daemon
         env:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false"
 
-      - name: Rename APK
+      - name: Prepare APK artifacts
         run: |
-          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk \
-             tips3x3-apk-${{ steps.version.outputs.APK_VERSION }}.apk
+          cp mobile/android/app/build/outputs/apk/surebet/debug/app-surebet-debug.apk \
+             tips3x3-surebet-betbra-${{ steps.version.outputs.APK_VERSION }}.apk
+          cp mobile/android/app/build/outputs/apk/surebetBolsa/debug/app-surebetBolsa-debug.apk \
+             tips3x3-surebet-bolsa-${{ steps.version.outputs.APK_VERSION }}.apk
 
-      - name: Upload APK artifact (GitHub)
+      - name: Upload Surebet BetBra artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tips3x3-${{ steps.version.outputs.APK_VERSION }}-${{ github.run_number }}
-          path: tips3x3-apk-${{ steps.version.outputs.APK_VERSION }}.apk
+          name: tips3x3-surebet-betbra-${{ steps.version.outputs.APK_VERSION }}-${{ github.run_number }}
+          path: tips3x3-surebet-betbra-${{ steps.version.outputs.APK_VERSION }}.apk
+          retention-days: 30
+
+      - name: Upload Surebet Bolsa artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tips3x3-surebet-bolsa-${{ steps.version.outputs.APK_VERSION }}-${{ github.run_number }}
+          path: tips3x3-surebet-bolsa-${{ steps.version.outputs.APK_VERSION }}.apk
           retention-days: 30
 
       - name: Deploy APK to VPS
@@ -109,7 +118,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-          APK_FILE="tips3x3-apk-${APK_VERSION}.apk"
+          APK_FILE="tips3x3-surebet-betbra-${APK_VERSION}.apk"
 
           echo "→ Enviando APK v${APK_VERSION} para ${VPS_HOST}..."
           scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
