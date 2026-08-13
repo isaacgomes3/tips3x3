@@ -225,24 +225,36 @@ final class BetBraTradeEngine {
     String runnerName = resolveCorrectScoreRunnerName(score);
     double odds = layOdds;
 
-    if (mId.isEmpty() || rId.isEmpty()) {
-      JSONObject quote = quoteCorrectScore(token, eventId, runnerName);
-      if (quote == null) {
-        out.put("ok", false);
-        out.put("error", "Não achei mercado Correct Score / runner " + runnerName);
-        return out;
-      }
-      mId = quote.optString("marketId", mId);
-      rId = quote.optString("runnerId", rId);
-      if (odds <= 1.01) odds = quote.optDouble("odds", odds);
+    // O feed e apenas o gatilho. Preco e liquidez executavel sao consultados
+    // novamente na mesma selecao imediatamente antes do POST.
+    JSONObject quote = quoteLayRunner(token, eventId, mId, rId, runnerName);
+    if (quote == null) {
+      out.put("ok", false);
+      out.put("error", "Não foi possível confirmar preço e liquidez executável");
+      return out;
     }
-    if (odds <= 1.01) {
+    mId = quote.optString("marketId", mId);
+    rId = quote.optString("runnerId", rId);
+    odds = quote.optDouble("odds", odds);
+    double executableLiquidity = quote.optDouble("availableAmount", 0);
+    if (odds <= 1.01 || mId.isEmpty() || rId.isEmpty()) {
       out.put("ok", false);
       out.put("error", "Odd Lay inválida");
       return out;
     }
+    if (executableLiquidity < MIN_STAKE) {
+      out.put("ok", false);
+      out.put(
+          "error",
+          String.format(
+              Locale.US,
+              "Liquidez executável insuficiente (R$ %.2f)",
+              executableLiquidity));
+      return out;
+    }
 
-    double stake = Math.floor((liability / (odds - 1.0)) * 100.0) / 100.0;
+    double requestedStake = Math.floor((liability / (odds - 1.0)) * 100.0) / 100.0;
+    double stake = requestedStake;
     if (stake < MIN_STAKE) {
       double minLiability = Math.round(MIN_STAKE * (odds - 1.0) * 100.0) / 100.0;
       if (minLiability > spendable + 0.001) {
@@ -258,6 +270,20 @@ final class BetBraTradeEngine {
         return out;
       }
       stake = MIN_STAKE;
+    }
+    double liquidityCents = Math.floor(executableLiquidity * 100.0) / 100.0;
+    boolean adjustedForLiquidity = stake > liquidityCents + 0.001;
+    stake = capStakeToExecutableLiquidity(stake, executableLiquidity);
+    if (stake < MIN_STAKE) {
+      out.put("ok", false);
+      out.put(
+          "error",
+          String.format(
+              Locale.US,
+              "Liquidez R$ %.2f não cobre a stake mínima R$ %.2f",
+              executableLiquidity,
+              MIN_STAKE));
+      return out;
     }
     double effectiveLiability = Math.round(stake * (odds - 1.0) * 100.0) / 100.0;
     if (effectiveLiability > spendable + 0.001 && spendable >= 1) {
@@ -294,6 +320,9 @@ final class BetBraTradeEngine {
 
     HttpResult res = httpJson("POST", API + "/offers", body.toString(), token);
     out.put("stake", stake);
+    out.put("requestedStake", requestedStake);
+    out.put("executableLiquidity", executableLiquidity);
+    out.put("adjustedForLiquidity", adjustedForLiquidity);
     out.put("odds", odds);
     out.put("liability", effectiveLiability);
     out.put("marketId", mId);
@@ -1934,6 +1963,93 @@ final class BetBraTradeEngine {
     } catch (Exception e) {
       return 0;
     }
+  }
+
+  /** Cotacao Lay atual da mesma selecao, incluindo o valor executavel no melhor preco. */
+  private JSONObject quoteLayRunner(
+      String token,
+      String eventId,
+      String expectedMarketId,
+      String expectedRunnerId,
+      String runnerName)
+      throws Exception {
+    HttpResult res =
+        httpJson(
+            "GET",
+            API + "/events/" + eventId + "?odds-type=DECIMAL&price-depth=3",
+            null,
+            token);
+    if (res.code < 200 || res.code >= 300 || res.bodyJson == null) return null;
+    JSONObject event = res.bodyJson;
+    if (event.has("event") && event.opt("event") instanceof JSONObject) {
+      event = event.getJSONObject("event");
+    }
+    JSONArray markets = event.optJSONArray("markets");
+    if (markets == null) return null;
+    JSONObject market = null;
+    for (int i = 0; i < markets.length(); i++) {
+      JSONObject candidate = markets.optJSONObject(i);
+      if (candidate == null) continue;
+      String id = candidate.optString("id", "");
+      String name = candidate.optString("name-original", candidate.optString("name", ""));
+      if ((!expectedMarketId.isEmpty() && expectedMarketId.equals(id))
+          || (expectedMarketId.isEmpty() && "correct score".equalsIgnoreCase(name.trim()))) {
+        market = candidate;
+        break;
+      }
+    }
+    if (market == null) return null;
+    JSONArray runners = market.optJSONArray("runners");
+    if (runners == null) return null;
+    String wantName = runnerName != null ? runnerName.trim().toLowerCase(Locale.ROOT) : "";
+    JSONObject runner = null;
+    for (int i = 0; i < runners.length(); i++) {
+      JSONObject candidate = runners.optJSONObject(i);
+      if (candidate == null) continue;
+      String id = candidate.optString("id", "");
+      String name = candidate.optString("name", "").trim().toLowerCase(Locale.ROOT);
+      if ((!expectedRunnerId.isEmpty() && expectedRunnerId.equals(id))
+          || (expectedRunnerId.isEmpty() && !wantName.isEmpty() && wantName.equals(name))) {
+        runner = candidate;
+        break;
+      }
+    }
+    if (runner == null) return null;
+    double bestOdds = Double.POSITIVE_INFINITY;
+    double availableAmount = 0;
+    JSONArray prices = runner.optJSONArray("prices");
+    for (int i = 0; prices != null && i < prices.length(); i++) {
+      JSONObject price = prices.optJSONObject(i);
+      if (price == null || !"lay".equalsIgnoreCase(price.optString("side", ""))) continue;
+      double odds = price.optDouble("odds", 0);
+      if (odds > 1.01 && odds < bestOdds) {
+        bestOdds = odds;
+        availableAmount = priceAvailableAmount(price);
+      }
+    }
+    if (bestOdds == Double.POSITIVE_INFINITY || !(availableAmount > 0)) return null;
+    JSONObject out = new JSONObject();
+    out.put("marketId", market.optString("id", expectedMarketId));
+    out.put("runnerId", runner.optString("id", expectedRunnerId));
+    out.put("odds", bestOdds);
+    out.put("availableAmount", availableAmount);
+    return out;
+  }
+
+  private static double priceAvailableAmount(JSONObject price) {
+    if (price == null) return 0;
+    for (String key : new String[] {
+      "available-amount", "availableAmount", "available_amount", "amount", "size"
+    }) {
+      double value = price.optDouble(key, 0);
+      if (value > 0) return value;
+    }
+    return 0;
+  }
+
+  static double capStakeToExecutableLiquidity(double requestedStake, double liquidity) {
+    if (!(requestedStake > 0) || !(liquidity > 0)) return 0;
+    return Math.floor(Math.min(requestedStake, liquidity) * 100.0) / 100.0;
   }
 
   private JSONObject quoteCorrectScore(String token, String eventId, String runnerName)

@@ -11,10 +11,9 @@
 
 import type { StrategyMarketKey } from "@/lib/wallet/credit-tier";
 
-/** Estratégia do sinal -> mercado da extensão. Lay 1x1 usa o CS de Eventos raros. */
+/** Estratégia do sinal -> mercado da extensão. */
 export const EXT_MARKET_BY_KIND: Record<string, StrategyMarketKey> = {
   "lay-3x3": "lay_3_3",
-  "lay-1x1": "lay_eventos_raros",
   "eventos-raros": "lay_eventos_raros",
   "lucro-certo": "lay_lucro_certo",
   "over-3.5": "lay_over_35",

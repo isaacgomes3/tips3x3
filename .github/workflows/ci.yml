@@ -77,14 +77,16 @@ jobs:
           echo "APK_VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
-      - name: Build Surebet debug APKs
+      - name: Test and build Android APKs
         working-directory: mobile/android
-        run: ./gradlew assembleSurebetDebug assembleSurebetBolsaDebug --no-daemon
+        run: ./gradlew testUsuarioDebugUnitTest lintUsuarioDebug assembleUsuarioDebug assembleSurebetDebug assembleSurebetBolsaDebug --no-daemon
         env:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false"
 
       - name: Prepare APK artifacts
         run: |
+          cp mobile/android/app/build/outputs/apk/usuario/debug/app-usuario-debug.apk \
+             tips3x3-usuario-${{ steps.version.outputs.APK_VERSION }}.apk
           cp mobile/android/app/build/outputs/apk/surebet/debug/app-surebet-debug.apk \
              tips3x3-surebet-betbra-${{ steps.version.outputs.APK_VERSION }}.apk
           cp mobile/android/app/build/outputs/apk/surebetBolsa/debug/app-surebetBolsa-debug.apk \
@@ -118,7 +120,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-          APK_FILE="tips3x3-surebet-betbra-${APK_VERSION}.apk"
+          APK_FILE="tips3x3-usuario-${APK_VERSION}.apk"
 
           echo "→ Enviando APK v${APK_VERSION} para ${VPS_HOST}..."
           scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
@@ -131,3 +133,9 @@ jobs:
             "cd /var/www/tips3x3 && node scripts/register-release.js --kind apk --version '${APK_VERSION}' --file /tmp/tips3x3-new.apk && rm /tmp/tips3x3-new.apk"
 
           echo "✓ APK v${APK_VERSION} publicado no painel admin e downloads de usuários"
+      - name: Upload Usuário artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tips3x3-usuario-${{ steps.version.outputs.APK_VERSION }}-${{ github.run_number }}
+          path: tips3x3-usuario-${{ steps.version.outputs.APK_VERSION }}.apk
+          retention-days: 30

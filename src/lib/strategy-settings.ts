@@ -11,7 +11,6 @@
 import type { SignalStrategy } from "@/lib/strategy-priority";
 
 const LAY3X3_KEY = "tips3x3-strategy-lay-3x3";
-const LAY_1X1_KEY = "tips3x3-strategy-lay-1x1";
 const QOV_KEY = "tips3x3-strategy-qov";
 const EVENTOS_RAROS_KEY = "tips3x3-strategy-eventos-raros";
 const LUCRO_CERTO_KEY = "tips3x3-strategy-lucro-certo";
@@ -28,7 +27,6 @@ export type PanelStrategyId = SignalStrategy;
 /** Ordem das pills no painel — não é a precedência de sinal. */
 const STRATEGY_IDS: PanelStrategyId[] = [
   "lay-3x3",
-  "lay-1x1",
   "qov-lay-zebra",
   "eventos-raros",
   "lucro-certo",
@@ -158,15 +156,6 @@ export function setLayOverLimitPressureEnabled(on: boolean) {
   writeFlag(LAY_OVER_LIMIT_PRESSURE_KEY, on);
 }
 
-/** Lay 1x1 — favorito 1x0 com pressão → lay no placar exato 1-1. Default ON. */
-export function isLay1x1Enabled(): boolean {
-  return readFlag(LAY_1X1_KEY, true);
-}
-
-export function setLay1x1Enabled(on: boolean) {
-  writeFlag(LAY_1X1_KEY, on);
-}
-
 /**
  * Estratégias liberadas para a execução automática, no formato `kind` da fila
  * da extensão. É o que o painel manda no /api/live (`extMarkets`).
@@ -174,7 +163,6 @@ export function setLay1x1Enabled(on: boolean) {
 export function activeExtSignalKinds(): string[] {
   const kinds: string[] = [];
   if (isLay3x3Enabled()) kinds.push("lay-3x3");
-  if (isLay1x1Enabled()) kinds.push("lay-1x1");
   if (isQovEnabled()) kinds.push("qov-lay-zebra");
   if (isEventosRarosEnabled()) kinds.push("eventos-raros");
   if (isLucroCertoEnabled()) kinds.push("lucro-certo");

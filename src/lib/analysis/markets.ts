@@ -231,33 +231,6 @@ export function extractOverMarket(event: BetBraEvent, line = 2.5) {
   };
 }
 
-/**
- * Extrai o runner 1-1 do mercado Correct Score para a estratégia Lay 1x1.
- */
-export function extractLay1x1Market(event: BetBraEvent) {
-  const market = findMarket(event, "Correct Score");
-  // Aceita "1-1", "1 - 1", "1–1"
-  const runner = market?.runners?.find((r) =>
-    /^1\s*[-–—]\s*1$/.test(r.name.trim()),
-  );
-  const lay = bestPrice(runner?.prices, "lay");
-  const back = bestPrice(runner?.prices, "back");
-
-  return {
-    market,
-    runner,
-    lay,
-    back,
-    layOdds: lay?.odds ?? null,
-    backOdds: back?.odds ?? runner?.["last-matched-odds"] ?? null,
-    layLiquidity: lay?.["available-amount"] ?? 0,
-    backLiquidity: back?.["available-amount"] ?? 0,
-    volume: runner?.volume ?? 0,
-    marketId: market?.id,
-    runnerId: runner?.id,
-  };
-}
-
 export function splitTeams(eventName: string): { home: string; away: string } {
   const parts = eventName.split(/\s+vs\s+/i);
   if (parts.length >= 2) {

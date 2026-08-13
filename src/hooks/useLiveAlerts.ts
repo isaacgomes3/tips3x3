@@ -42,8 +42,7 @@ export type LiveToastStrategy =
   | "qov"
   | "over-3.5"
   | "over-4.5"
-  | "lay-over-limit-pressure"
-  | "lay-1x1";
+  | "lay-over-limit-pressure";
 
 export type LiveToast = {
   id: string;
@@ -139,14 +138,6 @@ type LiveScoreRow = {
   overLimite35?: OverSnap;
   overLimite45?: OverSnap;
   layOverLimitPressure?: OverSnap[];
-  lay1x1?: {
-    entryReady?: boolean;
-    settled?: boolean;
-    layOdds?: number | null;
-    marketId?: string;
-    runnerId?: string;
-    mexchangeUrl?: string;
-  };
   confirmed?: boolean;
   mexchangeUrl?: string;
   qovMexchangeUrl?: string;
@@ -508,7 +499,6 @@ export function useLiveAlerts(
         `${id}:eventos-raros`,
         `${id}:over-3.5`,
         `${id}:over-4.5`,
-        `${id}:lay-1x1`,
       ];
       // Multi-placar: limpa também chaves por score
       for (const key of [...enterNotifiedRef.current]) {
@@ -814,42 +804,6 @@ export function useLiveAlerts(
       fireOverEnter(row.overLimite35, 3.5, row.overMexchangeUrl35);
       fireOverEnter(row.overLimite45, 4.5, row.overMexchangeUrl45);
 
-      // ENTRAR Lay 1x1 — favorito 1x0 com pressão + faixa odd 15–30
-      const lay1x1 = row.lay1x1;
-      const lay1x1Key = `${id}:lay-1x1`;
-      const lay1x1Ready = Boolean(
-        !isNativeApp() && lay1x1?.entryReady && !lay1x1?.settled,
-      );
-      if (shouldFireEnter(lay1x1Key, lay1x1Ready)) {
-        const minute =
-          row.live?.minute != null
-            ? ` @ ${Math.floor(row.live.minute)}′`
-            : "";
-        const entryOdds = Number(lay1x1?.layOdds ?? 0);
-        if (!enterNotifiedRef.current.has(lay1x1Key)) {
-          enterNotifiedRef.current.add(lay1x1Key);
-          pushAlert({
-            kind: "enter",
-            strategy: "lay-1x1",
-            title: `ENTRAR · LAY 1x1 · ${name}`,
-            body: label
-              ? `Lay Placar Exato 1-1 · ${label}${minute}${entryOdds > 1 ? ` · lay x${entryOdds}` : ""} · hold`
-              : `Lay Placar Exato 1-1${minute}${entryOdds > 1 ? ` · x${entryOdds}` : ""} · hold`,
-            tag: `tips3x3-enter-lay1x1-${id}-${Date.now()}`,
-          });
-        }
-        sendToExtension(row, {
-          score: "1-1",
-          kind: "lay-1x1",
-          layOdds: entryOdds,
-          marketId: lay1x1?.marketId,
-          runnerId: lay1x1?.runnerId,
-          mexchangeUrl: lay1x1?.mexchangeUrl ?? row.mexchangeUrl,
-          exitMode: "hold",
-          dedupeKey: lay1x1Key,
-        });
-      }
-
       // ENTRAR Lay Over Limite com Pressão — cruza estatísticas + pressão
       if (row.layOverLimitPressure && Array.isArray(row.layOverLimitPressure)) {
         for (const lolpSnap of row.layOverLimitPressure) {
@@ -1067,44 +1021,6 @@ export function useLiveAlerts(
         reviveOver(row.overLimite35, 3.5, row.overMexchangeUrl35);
         reviveOver(row.overLimite45, 4.5, row.overMexchangeUrl45);
 
-        // Lay 1x1 — revalida ao voltar à tela
-        const lay1x1 = row.lay1x1;
-        const lay1x1Key = `${id}:lay-1x1`;
-        const lay1x1Ready = Boolean(
-          !isNativeApp() && lay1x1?.entryReady && !lay1x1?.settled,
-        );
-        const lay1x1Prev = entryReadyPrevRef.current.get(lay1x1Key);
-        entryReadyPrevRef.current.set(lay1x1Key, lay1x1Ready);
-        if (
-          lay1x1Ready &&
-          lay1x1Prev !== true &&
-          !enterNotifiedRef.current.has(lay1x1Key) &&
-          !hasExtAutoEntryBeenDispatched(lay1x1Key)
-        ) {
-          enterNotifiedRef.current.add(lay1x1Key);
-          const entryOdds = Number(lay1x1?.layOdds ?? 0);
-          const visName = matchName(favorites, row);
-          const visLabel = row.live?.scoreLabel;
-          pushAlert({
-            kind: "enter",
-            strategy: "lay-1x1",
-            title: `ENTRAR · LAY 1x1 · ${visName}`,
-            body: visLabel
-              ? `Lay Placar Exato 1-1 · ${visLabel}${entryOdds > 1 ? ` · lay x${entryOdds}` : ""} · hold`
-              : `Lay Placar Exato 1-1${entryOdds > 1 ? ` · x${entryOdds}` : ""} · hold`,
-            tag: `tips3x3-enter-lay1x1-${id}-vis`,
-          });
-          sendToExtension(row, {
-            score: "1-1",
-            kind: "lay-1x1",
-            layOdds: entryOdds,
-            marketId: lay1x1?.marketId,
-            runnerId: lay1x1?.runnerId,
-            mexchangeUrl: lay1x1?.mexchangeUrl ?? row.mexchangeUrl,
-            exitMode: "hold",
-            dedupeKey: lay1x1Key,
-          });
-        }
       }
     };
     document.addEventListener("visibilitychange", onVis);

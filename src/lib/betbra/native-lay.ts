@@ -128,33 +128,6 @@ export function setNativeOver45StakePct(pct: number) {
   emit();
 }
 
-/** % da banca Lay 1x1 — filtro independente. Default 5%. */
-const LAY_1X1_STAKE_KEY = "tips3x3-stake-lay1x1-pct";
-const DEFAULT_LAY_1X1_STAKE_PCT = 5;
-
-export function getNativeLay1x1StakePct(): number {
-  if (typeof window === "undefined") return DEFAULT_LAY_1X1_STAKE_PCT;
-  try {
-    const raw = window.localStorage.getItem(LAY_1X1_STAKE_KEY);
-    const n = raw != null ? Number(raw) : DEFAULT_LAY_1X1_STAKE_PCT;
-    if (!Number.isFinite(n) || n <= 0) return DEFAULT_LAY_1X1_STAKE_PCT;
-    return Math.min(100, Math.max(1, n));
-  } catch {
-    return DEFAULT_LAY_1X1_STAKE_PCT;
-  }
-}
-
-export function setNativeLay1x1StakePct(pct: number) {
-  if (typeof window === "undefined") return;
-  const n = Math.min(100, Math.max(1, Number(pct) || DEFAULT_LAY_1X1_STAKE_PCT));
-  try {
-    window.localStorage.setItem(LAY_1X1_STAKE_KEY, String(n));
-  } catch {
-    /* ignore */
-  }
-  emit();
-}
-
 /** % da banca Lay QOV zebra — filtro independente do Lay 3x3. */
 const QOV_STAKE_KEY = "tips3x3-stake-qov-pct";
 const DEFAULT_QOV_STAKE_PCT = 20;
@@ -388,7 +361,7 @@ function setLastResult(result: NativeLayLastResult) {
 }
 
 async function recordIndicationApi(opts: {
-  kind: "lay-3x3" | "eventos-raros" | "lucro-certo" | "lay-1x1";
+  kind: "lay-3x3" | "eventos-raros" | "lucro-certo";
   eventId: string;
   eventName?: string;
   scoreLabel: string;
@@ -420,7 +393,7 @@ async function recordIndicationApi(opts: {
 }
 
 async function reportLayMatched(opts: {
-  kind: "lay-3x3" | "eventos-raros" | "lucro-certo" | "lay-1x1";
+  kind: "lay-3x3" | "eventos-raros" | "lucro-certo";
   eventId: string;
   eventName?: string;
   scoreLabel: string;
@@ -719,8 +692,7 @@ export async function executeNativeHoldLay(
     });
 
     const score = result.score || payload.score || "";
-    const isLay1x1 = payload.kind === "lay-1x1";
-    const kindLabel = isLucroCerto ? "Lucro certo" : isLay1x1 ? "Lay 1x1" : "Eventos raros";
+    const kindLabel = isLucroCerto ? "Lucro certo" : "Eventos raros";
     const msg = result.ok
       ? `Lay ${score} x${result.odds ?? payload.layOdds} · resp R$ ${
           result.liability?.toFixed?.(2) ?? "?"
@@ -739,7 +711,7 @@ export async function executeNativeHoldLay(
 
     if (result.ok) {
       void recordIndicationApi({
-        kind: isLucroCerto ? "lucro-certo" : isLay1x1 ? "lay-1x1" : "eventos-raros",
+        kind: isLucroCerto ? "lucro-certo" : "eventos-raros",
         eventId: String(payload.eventId),
         eventName: payload.eventName,
         scoreLabel: score,
@@ -751,7 +723,7 @@ export async function executeNativeHoldLay(
         },
       });
       void reportLayMatched({
-        kind: isLucroCerto ? "lucro-certo" : isLay1x1 ? "lay-1x1" : "eventos-raros",
+        kind: isLucroCerto ? "lucro-certo" : "eventos-raros",
         eventId: String(payload.eventId),
         eventName: payload.eventName,
         scoreLabel: score,

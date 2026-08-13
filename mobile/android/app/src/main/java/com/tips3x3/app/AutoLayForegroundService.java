@@ -608,7 +608,9 @@ public class AutoLayForegroundService extends Service {
       return;
     }
 
-    checkBetBraSessionDrop();
+    // Com Auto desligado o APK apenas mantem o monitor de primeiro plano; nao
+    // deve gerar alerta de sessao nem qualquer notificacao de mercado.
+    if (autoOn) checkBetBraSessionDrop();
     boolean sessionAvailable =
         !p.getBoolean(PREF_SESSION_BLOCKED, false) && engine.hasSession();
     /** Scanner e alertas ficam ativos; autoOn autoriza somente enviar apostas. */
@@ -840,8 +842,8 @@ public class AutoLayForegroundService extends Service {
                         profitFrac,
                         stake3x3,
                         apiBase);
-                if (!out.sessionExpired) markSent(key);
                 if (out.ok) {
+                  markSent(key);
                   placed++;
                   clearNoFundsCooldown();
                   greenBusy = hasOpenGreenTrade();
@@ -934,8 +936,8 @@ public class AutoLayForegroundService extends Service {
                         fixedStake,
                         immediate,
                         apiBase);
-                if (!out.sessionExpired) markSent(key);
                 if (out.ok) {
+                  markSent(key);
                   placed++;
                   clearNoFundsCooldown();
                   freeBalanceChecked = false;
@@ -1017,8 +1019,8 @@ public class AutoLayForegroundService extends Service {
                         selection,
                         "qov-lay-zebra",
                         "Lay " + selection);
-                markSent(key);
                 if (out.ok) {
+                  markSent(key);
                   placed++;
                   clearNoFundsCooldown();
                   greenBusy = hasOpenGreenTrade();
@@ -1040,6 +1042,21 @@ public class AutoLayForegroundService extends Service {
       if (postGoalOn && postGoalWindowReady && !stopPlacing && !greenBusy) {
         JSONObject postGoal = row.optJSONObject("postGoalCorrection");
         JSONObject selected = postGoal != null ? postGoal.optJSONObject("selected") : null;
+        // Compatibilidade defensiva: o feed publica a selecao explicita, mas o
+        // aparelho tambem sabe escolher a unica linha permitida apos o gol.
+        if (selected == null) {
+          double requiredLine = totalGoals + 2.5;
+          JSONObject fallback = Math.abs(requiredLine - 3.5) < 0.001
+              ? row.optJSONObject("overLimite35")
+              : Math.abs(requiredLine - 4.5) < 0.001
+                  ? row.optJSONObject("overLimite45")
+                  : null;
+          if (fallback != null) {
+            selected = new JSONObject(fallback.toString());
+            selected.put("line", requiredLine);
+            selected.put("stable", hasExecutableMarketQuote(selected));
+          }
+        }
         if (selected != null && selected.optBoolean("stable", false)) {
           double lineValue = selected.optDouble("line", -1);
           double layOdds = selected.optDouble("layOdds", 0);
@@ -1103,13 +1120,13 @@ public class AutoLayForegroundService extends Service {
                         selection,
                         "correcao-pos-gol",
                         "Correção pós-gol · Lay " + selection);
-                markSent(key);
-                if (out.ok) {
-                  markPostGoalEntered(eventId, totalGoals);
-                  placed++;
-                  clearNoFundsCooldown();
-                  greenBusy = hasOpenGreenTrade();
-                }
+                  if (out.ok) {
+                    markSent(key);
+                    markPostGoalEntered(eventId, totalGoals);
+                    placed++;
+                    clearNoFundsCooldown();
+                    greenBusy = hasOpenGreenTrade();
+                  }
                 if (out.noFunds) {
                   stopPlacing = true;
                   noFundsNow = true;
@@ -1194,8 +1211,8 @@ public class AutoLayForegroundService extends Service {
                     selection,
                     "lay-over-limit-pressure",
                     "Lay " + selection);
-            markSent(key);
             if (out.ok) {
+              markSent(key);
               placed++;
               clearNoFundsCooldown();
               greenBusy = hasOpenGreenTrade();
@@ -1283,8 +1300,8 @@ public class AutoLayForegroundService extends Service {
                     selection,
                     kind,
                     "Lay " + selection);
-            markSent(key);
             if (out.ok) {
+              markSent(key);
               placed++;
               clearNoFundsCooldown();
               greenBusy = hasOpenGreenTrade();
@@ -1340,9 +1357,9 @@ public class AutoLayForegroundService extends Service {
       return;
     }
     if (!autoOn) {
-      updateFgText("Monitor ativo · Auto Lay desligado · a notificar sinais");
+      updateFgText("Monitor ativo · Auto Lay desligado · sem ordens");
     } else if (!hasSession) {
-      updateFgText("Auto Lay · " + exchangeName() + " desconectada · a notificar sinais");
+      updateFgText("Auto Lay · " + exchangeName() + " desconectada · sem ordens");
     } else if (noFundsNow) {
       updateFgText(noFundsStatusText());
     } else if (greenBusy) {
@@ -1533,8 +1550,10 @@ public class AutoLayForegroundService extends Service {
           engine.placeLay(eventId, selection, layOdds, marketId, runnerId, stakePct);
       if (!lay.optBoolean("ok", false)) {
         String err = lay.optString("error", "erro");
-        notifyResult(false, opLabel + " falhou", eventName + " · " + err);
-        return new PlaceOutcome(false, isNoFundsError(err));
+        boolean sessionExpired = isSessionExpiredError(err);
+        if (sessionExpired) handleExpiredSession();
+        else notifyResult(false, opLabel + " falhou", eventName + " · " + err);
+        return new PlaceOutcome(false, isNoFundsError(err), sessionExpired);
       }
       double placedLayOdds = lay.optDouble("odds", layOdds);
       double layStake = lay.optDouble("stake", 0);
@@ -1544,10 +1563,14 @@ public class AutoLayForegroundService extends Service {
       String layOfferId = lay.optString("offerId", "");
       String layBetId = lay.optString("betId", "");
       // Pedido no book — NÃO registra indicação/UI de entrada até casar (valor exato).
+      // A odd pode ter mudado na revalidação de liquidez feita pelo motor.
+      // Recalcula o Back com a odd realmente enviada, não com a cotação do feed.
+      Double recalculatedBack =
+          BetBraTradeEngine.targetBackForLiabilityProfit(placedLayOdds, profitFrac);
       Double targetBack =
-          targetBackOdds > 1.01
-              ? targetBackOdds
-              : BetBraTradeEngine.targetBackForLiabilityProfit(placedLayOdds, profitFrac);
+          recalculatedBack != null
+              ? recalculatedBack
+              : (targetBackOdds > 1.01 ? targetBackOdds : null);
       if (targetBack == null || !(layStake > 0)) {
         saveActiveTrade(
             eventId,
@@ -1617,8 +1640,10 @@ public class AutoLayForegroundService extends Service {
                   : ""));
       return new PlaceOutcome(true, false);
     } catch (Exception e) {
-      notifyResult(false, opLabel + " falhou", eventName + " · " + e.getMessage());
-      return new PlaceOutcome(false, isNoFundsError(e.getMessage()));
+      boolean sessionExpired = isSessionExpiredError(e.getMessage());
+      if (sessionExpired) handleExpiredSession();
+      else notifyResult(false, opLabel + " falhou", eventName + " · " + e.getMessage());
+      return new PlaceOutcome(false, isNoFundsError(e.getMessage()), sessionExpired);
     }
   }
 
@@ -1643,6 +1668,8 @@ public class AutoLayForegroundService extends Service {
               eventId, score, layOdds, marketId, runnerId, stakePct, fixedLiability);
       boolean ok = lay.optBoolean("ok", false);
       String err = lay.optString("error", "erro");
+      double placedLiability = lay.optDouble("liability", fixedLiability);
+      boolean adjustedForLiquidity = lay.optBoolean("adjustedForLiquidity", false);
       boolean sessionExpired = !ok && isSessionExpiredError(err);
       if (sessionExpired) handleExpiredSession();
       if (!sessionExpired) {
@@ -1657,9 +1684,10 @@ public class AutoLayForegroundService extends Service {
                     + score
                     + " x"
                     + lay.optDouble("odds", layOdds)
-                    + (fixedLiability >= 1
-                        ? " · resp R$ " + String.format(Locale.US, "%.0f", fixedLiability)
+                    + (placedLiability >= 1
+                        ? " · resp R$ " + String.format(Locale.US, "%.2f", placedLiability)
                         : "")
+                    + (adjustedForLiquidity ? " · valor ajustado à liquidez" : "")
                 : eventName + " · " + err);
       }
       if (ok) {
@@ -1798,17 +1826,27 @@ public class AutoLayForegroundService extends Service {
   }
 
   private void clearActiveTrade() {
-    prefs(this).edit().remove(PREF_ACTIVE_TRADE).apply();
+    // apply() atualiza a memória do SharedPreferences imediatamente. Assim,
+    // depois que o Back casa, hasOpenGreenTrade() já libera outra entrada no
+    // restante deste mesmo ciclo de poll (sem esperar os próximos 10 segundos).
+    prefs(this)
+        .edit()
+        .remove(PREF_ACTIVE_TRADE)
+        .putLong("lastGreenReleasedAt", System.currentTimeMillis())
+        .apply();
+  }
+
+  static boolean isOpenGreenTradePhase(String phase) {
+    return "lay_sent".equals(phase)
+        || "awaiting_lay_match".equals(phase)
+        || "awaiting_back".equals(phase)
+        || "back_sent".equals(phase);
   }
 
   private boolean hasOpenGreenTrade() {
     JSONObject t = loadActiveTrade();
     if (t == null) return false;
-    String phase = t.optString("phase", "");
-    return "lay_sent".equals(phase)
-        || "awaiting_lay_match".equals(phase)
-        || "awaiting_back".equals(phase)
-        || "back_sent".equals(phase);
+    return isOpenGreenTradePhase(t.optString("phase", ""));
   }
 
   /**
@@ -1988,6 +2026,9 @@ public class AutoLayForegroundService extends Service {
         double matchedBackOdds = existingBack.optDouble("odds", targetBack);
         double realizedProfit =
             Math.round(Math.max(0, layStake - matchedBackStake) * 100.0) / 100.0;
+        // O Back já está confirmado. Libera a vaga antes de histórico/rede para
+        // que uma falha ao registrar a indicação nunca mantenha o green travado.
+        clearActiveTrade();
         // Registra também o Back encontrado na Bolsa. Isso cobre tanto o Back
         // criado pelo APK quanto um Back manual que encerrou a mesma posição.
         recordIndication(
@@ -2028,7 +2069,6 @@ public class AutoLayForegroundService extends Service {
             matchedBackOdds,
             matchedBackStake,
             realizedProfit);
-        clearActiveTrade();
         notifyResult(
             true,
             "Green concluído · Back correspondido",
@@ -2515,6 +2555,13 @@ public class AutoLayForegroundService extends Service {
     return String.format(Locale.US, "%.2f", odds);
   }
 
+  static boolean hasExecutableMarketQuote(JSONObject quote) {
+    return quote != null
+        && quote.optDouble("layOdds", 0) > 1.01
+        && !quote.optString("marketId", "").isEmpty()
+        && !quote.optString("runnerId", "").isEmpty();
+  }
+
   /** Prefiltro barato do feed; o motor consulta novamente a Bolsa antes do POST. */
   private static boolean looksLikeMatchOddsSurebet(JSONObject matchOdds) {
     if (matchOdds == null) return false;
@@ -2632,7 +2679,6 @@ public class AutoLayForegroundService extends Service {
     if (kind != null && !kind.trim().isEmpty()) return kind.trim();
     String value = selection != null ? selection.trim().toLowerCase(Locale.ROOT) : "";
     if (value.contains("qov") || value.contains("zebra")) return "qov-lay-zebra";
-    if (value.equals("1-1") || value.contains("1x1")) return "lay-1x1";
     if (value.equals("3-3") || value.contains("3x3")) return "lay-3x3";
     if (value.contains("over 3.5") || value.contains("over 3,5")) return "over-3.5";
     if (value.contains("over 4.5") || value.contains("over 4,5")) return "over-4.5";
@@ -2652,7 +2698,6 @@ public class AutoLayForegroundService extends Service {
           + (selection != null && !selection.isEmpty() ? selection : "Over");
     }
     if ("qov-lay-zebra".equals(kind) || "qov".equals(kind)) return "Lay QOV zebra";
-    if ("lay-1x1".equals(kind)) return "Lay 1x1";
     if ("lay-3x3".equals(kind)) return "Lay 3x3";
     if ("over-legacy".equals(kind)) {
       return "Lay " + (selection != null && !selection.isEmpty() ? selection : "Over");
@@ -2664,7 +2709,9 @@ public class AutoLayForegroundService extends Service {
 
   /** Notificação ENTRAR (tela off). gold=Eventos raros; senão Lay 3x3 verde. */
   private void notifyEnter(boolean gold, String title, String body) {
-    if (BuildConfig.SUREBET_ONLY) return;
+    // O APK nao notifica candidato de mercado. A notificacao operacional nasce
+    // em notifyResult(), somente depois que o Auto Lay tentou/enviou a ordem.
+    if (!candidateMarketNotificationsEnabled()) return;
     NotificationManager nm = getSystemService(NotificationManager.class);
     if (nm == null) return;
     ensureChannels();
@@ -2710,6 +2757,10 @@ public class AutoLayForegroundService extends Service {
     // Reforço com stream de NOTIFICAÇÃO (não toque/alarme do telemóvel).
     playEnterNotificationSound();
     pulseScreenWake();
+  }
+
+  private static boolean candidateMarketNotificationsEnabled() {
+    return false;
   }
 
   private void playEnterNotificationSound() {

@@ -18,7 +18,6 @@
 export type SignalStrategy =
   | "lucro-certo"
   | "lay-3x3"
-  | "lay-1x1"
   | "eventos-raros"
   | "over-3.5"
   | "over-4.5"
@@ -28,7 +27,6 @@ export type SignalStrategy =
 export const SIGNAL_PRIORITY: SignalStrategy[] = [
   "lucro-certo",
   "lay-3x3",
-  "lay-1x1",
   "eventos-raros",
   "over-3.5",
   "over-4.5",

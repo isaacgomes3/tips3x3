@@ -20,7 +20,6 @@ import DownloadsPanel from "@/components/DownloadsPanel";
 import WalletBalanceBadge from "@/components/WalletBalanceBadge";
 import { useBankrollData } from "@/hooks/useBankrollData";
 import { LayOverLimitPressurePanel } from "@/components/LayOverLimitPressurePanel";
-import { Lay1x1Panel } from "@/components/Lay1x1Panel";
 import { StrategyConfigRow } from "@/components/StrategyConfigRow";
 import {
   isMarketAllowedForTier,
@@ -40,7 +39,6 @@ import {
 import {
   getActiveStrategy,
   isEventosRarosEnabled,
-  isLay1x1Enabled,
   isLay3x3Enabled,
   isLayOverLimitPressureEnabled,
   isLucroCertoEnabled,
@@ -51,7 +49,6 @@ import {
   isQovEnabled,
   setActiveStrategy,
   setEventosRarosEnabled,
-  setLay1x1Enabled,
   setLay3x3Enabled,
   setLayOverLimitPressureEnabled,
   setLucroCertoEnabled,
@@ -78,16 +75,15 @@ import {
   getAutoLayNativeStatus,
   openAutoLaySettings,
   syncAutoLayBackground,
+  wakeAutoLayBackground,
   type ActiveTradeSnapshot,
 } from "@/lib/betbra/auto-lay-bg";
 import {
   clearNativeLayLastResult,
-  fetchBetBraBalance,
   fetchBetBraBalanceSnapshot,
   fetchBetBraOffers,
   getCachedBetBraSession,
   getNativeLayLastResult,
-  getNativeLay1x1StakePct,
   getNativeLay3x3StakePct,
   getNativeLucroCertoStake,
   getNativeEventosRarosStake,
@@ -97,7 +93,6 @@ import {
   getNativeReservedLucroCerto,
   openBetBraLogin,
   refreshBetBraSession,
-  setNativeLay1x1StakePct,
   setNativeLay3x3StakePct,
   setNativeLucroCertoStake,
   setNativeEventosRarosStake,
@@ -429,34 +424,6 @@ type LivePayload = {
     overLimite35?: OverLimiteSnapshot;
     overLimite45?: OverLimiteSnapshot;
     layOverLimitPressure?: LayOverLimitPressureResult[];
-    lay1x1?: {
-      settled: boolean;
-      entryReady: boolean;
-      layOdds: number | null;
-      backOdds: number | null;
-      layLiquidity: number;
-      homeScore: number | null;
-      awayScore: number | null;
-      minute: number | null;
-      favoriteSide: "home" | "away" | null;
-      favoritePressureBias: number | null;
-      goodCount: number;
-      summary: string;
-      marketId?: string;
-      runnerId?: string;
-      mexchangeUrl?: string;
-      eventId?: string;
-      eventName?: string;
-      indicators: Array<{
-        id: string;
-        label: string;
-        icon: string;
-        tone: string;
-        good: boolean;
-        detail: string;
-        value?: number | null;
-      }>;
-    };
     qovLayUnderdog?: QovSnapshot;
     qovBackFavorite?: QovSnapshot;
     eventosRaros?: EventosRarosSnapshot;
@@ -537,12 +504,7 @@ function isLayOverLimitPressureStrategy(strategy: StrategyId): boolean {
   return strategy === "lay-over-limit-pressure";
 }
 
-function isLay1x1Strategy(strategy: StrategyId): boolean {
-  return strategy === "lay-1x1";
-}
-
 function isLiveOnlyStrategy(strategy: StrategyId): boolean {
-  if (isLay1x1Strategy(strategy)) return true;
   return (
     isQovStrategy(strategy) ||
     isEventosRarosStrategy(strategy) ||
@@ -939,13 +901,11 @@ export function Dashboard() {
   const [over35On, setOver35On] = useState(true);
   const [over45On, setOver45On] = useState(true);
   const [layOverLimitPressureOn, setLayOverLimitPressureOn] = useState(true);
-  const [lay1x1On, setLay1x1On] = useState(true);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
   const [nativeApp, setNativeApp] = useState(false);
   const [nativeAutoOn, setNativeAutoOn] = useState(false);
   const [nativeSurebetEdition, setNativeSurebetEdition] = useState(false);
-  const [nativeEditionResolved, setNativeEditionResolved] = useState(false);
   const [nativeExchangeName, setNativeExchangeName] = useState("Exchange");
   const didAutoResetFilters = useRef(false);
   const [betBraConnected, setBetBraConnected] = useState(false);
@@ -973,7 +933,6 @@ export function Dashboard() {
   const [nativeLucroCertoStake, setNativeLucroCertoStakeState] = useState(1001);
   const [nativeReservedLc, setNativeReservedLcState] = useState(1001);
   const [nativeLolpStakePct, setNativeLolpStakePctState] = useState(5);
-  const [nativeLay1x1StakePct, setNativeLay1x1StakePctState] = useState(5);
   const [nativeLayLast, setNativeLayLast] = useState<NativeLayLastResult | null>(
     null,
   );
@@ -1034,7 +993,6 @@ export function Dashboard() {
     setOver35On(isOver35Enabled());
     setOver45On(isOver45Enabled());
     setLayOverLimitPressureOn(isLayOverLimitPressureEnabled());
-    setLay1x1On(isLay1x1Enabled());
     setStrategy(getActiveStrategy());
     setOnlyLive(isOnlyLiveFilter());
     setOnlyFavorites(isOnlyFavoritesFilter());
@@ -1049,7 +1007,6 @@ export function Dashboard() {
     if (over35On) enabled.push("over-3.5");
     if (over45On) enabled.push("over-4.5");
     if (layOverLimitPressureOn) enabled.push("lay-over-limit-pressure");
-    if (lay1x1On) enabled.push("lay-1x1");
     if (enabled.length === 0) return;
     if (!enabled.includes(strategy)) {
       const next = enabled[0];
@@ -1079,7 +1036,6 @@ export function Dashboard() {
       setOver35On(isOver35Enabled());
       setOver45On(isOver45Enabled());
       setLayOverLimitPressureOn(isLayOverLimitPressureEnabled());
-      setLay1x1On(isLay1x1Enabled());
       const p = getTargetProfitPctPoints();
       setTargetProfitPct(p);
       setProfitDraft(String(p).replace(".", ","));
@@ -1197,13 +1153,6 @@ export function Dashboard() {
     setLastSyncAt(Date.now());
     const native = isNativeApp();
     setNativeApp(native);
-    if (native) {
-      setLay1x1On(false);
-      if (getActiveStrategy() === "lay-1x1") {
-        setStrategy("lay-3x3");
-        setActiveStrategy("lay-3x3");
-      }
-    }
     setNativeLay3x3StakePctState(getNativeLay3x3StakePct());
     setNativeQovStakePctState(getNativeQovStakePct());
     setNativeEventosRarosStakeState(getNativeEventosRarosStake());
@@ -1212,7 +1161,6 @@ export function Dashboard() {
     setNativeLucroCertoStakeState(getNativeLucroCertoStake());
     setNativeReservedLcState(getNativeReservedLucroCerto());
     setNativeLolpStakePctState(Math.round(getLolpStakePct() * 100));
-    setNativeLay1x1StakePctState(getNativeLay1x1StakePct());
     setNativeLayLast(getNativeLayLastResult());
     if (!native) return;
     void refreshExchangeSnapshot();
@@ -1228,7 +1176,6 @@ export function Dashboard() {
       setNativeLucroCertoStakeState(getNativeLucroCertoStake());
       setNativeReservedLcState(getNativeReservedLucroCerto());
       setNativeLolpStakePctState(Math.round(getLolpStakePct() * 100));
-      setNativeLay1x1StakePctState(getNativeLay1x1StakePct());
       setNativeLayLast(getNativeLayLastResult());
       const cached = getCachedBetBraSession();
       if (cached) setBetBraConnected(Boolean(cached.connected));
@@ -1260,7 +1207,6 @@ export function Dashboard() {
       if (!cancelled && status) {
         setNativeAutoOn(Boolean(status.autoOn));
         setNativeSurebetEdition(Boolean(status.surebetEdition));
-        setNativeEditionResolved(true);
         setNativeExchangeName(status.exchangeDisplayName || "Exchange");
         if (status.surebetEdition) {
           setLucroCertoOn(false);
@@ -1319,27 +1265,12 @@ export function Dashboard() {
     alertsArmed,
     armAlerts,
     extAutoSend,
-    setExtAutoSend: setExtAutoSendBase,
   } = useLiveAlerts(
     favorites,
     live?.rows,
-    !isNativeApp() || (nativeEditionResolved && !nativeSurebetEdition),
+    !isNativeApp(),
   );
 
-  const setExtAutoSend = useCallback(
-    (on: boolean) => {
-      setExtAutoSendBase(on);
-      // Não força estratégias ON — respeita o que o utilizador desligou.
-      if (on) {
-        setLay3x3On(isLay3x3Enabled());
-        setEventosRarosOn(isEventosRarosEnabled());
-        setLucroCertoOn(isLucroCertoEnabled());
-        setLayOverLimitPressureOn(isLayOverLimitPressureEnabled());
-        setLay1x1On(isLay1x1Enabled());
-      }
-    },
-    [setExtAutoSendBase],
-  );
   const [detailOpen, setDetailOpen] = useState<Record<string, boolean>>({
     trade: true,
     moment: true,
@@ -1701,7 +1632,6 @@ export function Dashboard() {
       if (id === "over-4.5") return over45On;
       if (id === "qov-lay-zebra") return qovOn;
       if (id === "lay-over-limit-pressure") return layOverLimitPressureOn;
-      if (id === "lay-1x1") return lay1x1On;
       return false;
     };
 
@@ -1855,7 +1785,6 @@ export function Dashboard() {
     if (!lay3x3On) {
       setLay3x3Enabled(true);
       setLay3x3On(true);
-      if (isNativeApp()) void syncAutoLayBackground({ lay3x3On: true });
     }
     setView("jogos");
     setTopNavOpen(false);
@@ -2097,10 +2026,9 @@ export function Dashboard() {
               onConnect: () => {
                 setBetBraBusy(true);
                 void openBetBraLogin()
-                  // Reaplica as preferências e envia ACTION_START: isto
-                  // reinicia imediatamente o poll nativo após reconectar.
                   .then(async () => {
-                    await syncAutoLayBackground();
+                    // Acorda o serviço sem copiar filtros/gestão do painel.
+                    await wakeAutoLayBackground();
                     await refreshExchangeSnapshot();
                     setTick((t) => t + 1);
                   })
@@ -2198,15 +2126,6 @@ export function Dashboard() {
                     LOLP
                   </button>
                 ) : null}
-                {lay1x1On && !nativeApp ? (
-                  <button
-                    type="button"
-                    className={`pill ${strategy === "lay-1x1" ? "active" : ""}`}
-                    onClick={() => goStrategy("lay-1x1")}
-                  >
-                    Lay 1x1
-                  </button>
-                ) : null}
                 <button
                   type="button"
                   className={`pill ${!onlyLive ? "active" : ""}`}
@@ -2261,17 +2180,8 @@ export function Dashboard() {
               />
             ) : null}
 
-            {isLayOverLimitPressureStrategy(strategy) ? (
+            {!nativeApp && isLayOverLimitPressureStrategy(strategy) ? (
               <LayOverLimitPressurePanel />
-            ) : null}
-
-            {!nativeApp && isLay1x1Strategy(strategy) ? (
-              <Lay1x1Panel
-                snapshots={(live?.rows ?? [])
-                  .map((r) => r.lay1x1)
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  .filter((s): s is any => s != null && !s.settled)}
-              />
             ) : null}
 
             <div
@@ -2308,8 +2218,6 @@ export function Dashboard() {
                           ? `Nenhum Lay Over ${strategy === "over-3.5" ? "3.5" : "4.5"} com setup agora`
                         : isLayOverLimitPressureStrategy(strategy)
                           ? "Nenhum Lay Over Limite com Pressão com setup agora"
-                        : isLay1x1Strategy(strategy)
-                          ? "Nenhum jogo com favorito 1x0 e pressão agora"
                         : onlyFavorites
                         ? "Nenhum favorito nesta lista"
                         : onlyLive
@@ -2327,8 +2235,6 @@ export function Dashboard() {
                           ? `Lay Over ${strategy === "over-3.5" ? "3.5" : "4.5"} · lay→back com meta de lucro do painel.`
                       : isLayOverLimitPressureStrategy(strategy)
                         ? "Lay Over Limite com Pressão · varre todos os jogos ao vivo com análise cruzada."
-                      : isLay1x1Strategy(strategy)
-                        ? "Lay 1x1 · favorito abre 1x0 com pressão → lay no Placar Exato 1-1 · odd back fav. 1.05–1.15."
                       : onlyFavorites
                         ? "Toque na estrela de um jogo para fixá-lo no topo e receber gols."
                         : onlyLive
@@ -2450,7 +2356,23 @@ export function Dashboard() {
 
         {view === "alertas" && (
           <div className="panel-block">
-            <div className="alertas-ext-bar">
+            {nativeApp ? (
+              <div className="alertas-ext-bar">
+                <p className="alertas-ext-hint">
+                  Os alertas do APK são apenas o resultado das ordens executadas
+                  pelo Auto Lay. Gestão, filtros e stakes ficam exclusivamente nas
+                  configurações nativas do aparelho.
+                </p>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => void openAutoLaySettings()}
+                >
+                  Abrir configurações do APK
+                </button>
+              </div>
+            ) : null}
+            <div className="alertas-ext-bar" hidden={nativeApp}>
               <label className="alertas-ext-toggle">
                 <input
                   type="checkbox"
@@ -2593,26 +2515,6 @@ export function Dashboard() {
                 </span>
               </label>
 
-              <label className="alertas-ext-toggle" hidden={nativeApp}>
-                <input
-                  type="checkbox"
-                  checked={lay1x1On}
-                  onChange={(e) => {
-                    const on = e.target.checked;
-                    setLay1x1Enabled(on);
-                    setLay1x1On(on);
-                    if (nativeApp)
-                      void syncAutoLayBackground({ lay1x1On: on });
-                  }}
-                />
-                <span>
-                  <strong>Auto Lay 1x1</strong>
-                  <em>
-                    Favorito abre 1×0 e mantém pressão → Lay no Placar Exato 1-1.
-                    Odd back fav. 1.05–1.15 · Lay 15–30 · Somente Lay.
-                  </em>
-                </span>
-              </label>
               <p className="alertas-ext-hint">
                 {nativeApp
                   ? nativeAutoOn
@@ -2695,6 +2597,21 @@ export function Dashboard() {
 
         {view === "config" && nativeApp && (
           <div className="panel-block config-panel">
+            <section className="config-card">
+              <h3>Configurações do APK</h3>
+              <p className="config-lead">
+                O painel é somente informativo. Auto Lay, filtros, stakes, reserva
+                e lucro alvo são lidos exclusivamente das configurações deste APK.
+              </p>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void openAutoLaySettings()}
+              >
+                Abrir configurações do APK
+              </button>
+            </section>
+            <div hidden>
             {walletBlocked && !isMaster ? (
               <div className="banner-error">
                 Sem crédito — a automação não executa novas operações.
@@ -2975,31 +2892,6 @@ export function Dashboard() {
                     },
                   }}
                 />
-                <StrategyConfigRow
-                  icon="⚽"
-                  name="Lay 1x1"
-                  tag="Somente Lay"
-                  checked={lay1x1On}
-                  onToggle={(on) => {
-                    setLay1x1Enabled(on);
-                    setLay1x1On(on);
-                    if (nativeApp)
-                      void syncAutoLayBackground({ lay1x1On: on });
-                  }}
-                  stake={{
-                    value: nativeLay1x1StakePct,
-                    unit: "%",
-                    step: 1,
-                    min: 1,
-                    max: 25,
-                    onChange: (n) => {
-                      setNativeLay1x1StakePctState(n);
-                      setNativeLay1x1StakePct(n);
-                      if (nativeApp)
-                        void syncAutoLayBackground({ stakeLay1x1Pct: n });
-                    },
-                  }}
-                />
               </div>
               <label className="config-field" style={{ marginTop: "0.85rem" }}>
                 Reserva Lucro certo (R$)
@@ -3084,6 +2976,15 @@ export function Dashboard() {
             </section>
 
             {isMaster && !nativeApp ? (
+              <section className="config-card">
+                <h3>Administração</h3>
+                <a href="/admin" className="btn-primary">
+                  Abrir administração
+                </a>
+              </section>
+            ) : null}
+            </div>
+            {isMaster ? (
               <section className="config-card">
                 <h3>Administração</h3>
                 <a href="/admin" className="btn-primary">
@@ -3218,14 +3119,12 @@ function GameRow({
   const lucroStrategy = isLucroCertoStrategy(strategy);
   const overStrategy = isOverStrategy(strategy);
   const lolpStrategy = isLayOverLimitPressureStrategy(strategy);
-  const lay1x1Strat = isLay1x1Strategy(strategy);
   const indicatorStrategy =
-    qovStrategy || erStrategy || lucroStrategy || overStrategy || lolpStrategy || lay1x1Strat;
+    qovStrategy || erStrategy || lucroStrategy || overStrategy || lolpStrategy;
   const qov = resolveQov(row, liveRow);
   const er = resolveEventosRaros(row, liveRow);
   const over = resolveOver(row, liveRow, strategy);
   const lolp = lolpStrategy ? resolveLolp(row, liveRow) : null;
-  const lay1x1Live = lay1x1Strat ? (liveRow?.lay1x1 ?? null) : null;
   const lucroEntries =
     er?.entries?.filter((e) => e.entryReady !== false && e.alreadyImpossible) ??
     [];
@@ -3246,8 +3145,6 @@ function GameRow({
         ? `Total · Over ${strategy === "over-3.5" ? "3.5" : "4.5"}`
       : lolpStrategy
         ? `Total · Over ${lolp?.line != null ? lolp.line.toFixed(1) : "Limite"} (pressão)`
-      : lay1x1Strat
-        ? "Placar Correto · 1-1"
       : "Placar Correto · 3-3";
   const marketUrl = qovStrategy
     ? liveRow?.qovMexchangeUrl ?? row.qovMexchangeUrl ?? row.mexchangeUrl
@@ -3265,8 +3162,6 @@ function GameRow({
             row.mexchangeUrl
       : lolpStrategy
         ? lolp?.mexchangeUrl ?? row.mexchangeUrl
-      : lay1x1Strat
-        ? lay1x1Live?.mexchangeUrl ?? row.mexchangeUrl
       : row.mexchangeUrl;
   const marketUrlResolved = withExchangeDomain(marketUrl);
   const live =
@@ -3318,14 +3213,6 @@ function GameRow({
             : lolp && lolp.goodCount >= 1
               ? "ALINHANDO"
               : "LOLP"
-      : lay1x1Strat
-        ? lay1x1Live?.settled
-          ? "ENCERRADO"
-          : lay1x1Live?.entryReady
-            ? "ENTRAR"
-            : lay1x1Live && lay1x1Live.goodCount >= 1
-              ? "ALINHANDO"
-              : "1x1"
       : tradeStatus(plan);
   const statusKey = status.toLowerCase().replace(/[^a-z0-9]+/g, "");
   const [homeGoals, awayGoals] = splitScoreLabel(live?.scoreLabel);
@@ -3468,9 +3355,7 @@ function GameRow({
                 ? er?.backOdds ?? null
                 : overStrategy
                   ? over?.backOdds ?? null
-                  : lay1x1Strat
-                    ? null
-                    : a.quotes?.back.odds
+                  : a.quotes?.back.odds
           }
           backAmount={
             indicatorStrategy ? 0 : a.quotes?.back.amount ?? 0
@@ -3482,9 +3367,7 @@ function GameRow({
                 ? er?.layOdds ?? null
                 : overStrategy
                   ? over?.layOdds ?? null
-                  : lay1x1Strat
-                    ? lay1x1Live?.layOdds ?? null
-                    : a.quotes?.lay.odds
+                  : a.quotes?.lay.odds
           }
           layAmount={
             qovStrategy
@@ -3493,9 +3376,7 @@ function GameRow({
                 ? er?.liquidity ?? 0
                 : overStrategy
                   ? over?.layLiquidity ?? 0
-                  : lay1x1Strat
-                    ? lay1x1Live?.layLiquidity ?? 0
-                    : a.quotes?.lay.amount ?? 0
+                  : a.quotes?.lay.amount ?? 0
           }
           label={marketLabel}
           href={marketUrlResolved}

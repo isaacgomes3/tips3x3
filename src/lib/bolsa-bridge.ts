@@ -27,8 +27,7 @@ export type Tips3x3EntryKind =
   | "over-3.5"
   | "over-4.5"
   | "lay-over-limit-pressure"
-  | "qov-lay-zebra"
-  | "lay-1x1";
+  | "qov-lay-zebra";
 
 export type Tips3x3AutoEntryPayload = {
   eventId: string;

@@ -3,7 +3,6 @@ import { buildEventosRarosSnapshot } from "@/lib/analysis/eventos-raros";
 import { confirmLivePattern, toLiveSnapshot } from "@/lib/analysis/live";
 import {
   extractLay3x3,
-  extractLay1x1Market,
   extractOverMarket,
   extractQovMarket,
   listHighLayCorrectScores,
@@ -14,10 +13,6 @@ import {
   derivePressureFromIntel,
   type LayOverLimitPressureSnapshot,
 } from "@/lib/analysis/lay-over-limit-pressure";
-import {
-  buildLay1x1Snapshot,
-  type Lay1x1Snapshot,
-} from "@/lib/analysis/lay-1x1";
 import { buildOverLimiteSnapshot } from "@/lib/analysis/over-limite";
 import { analyzePreLive } from "@/lib/analysis/prelive";
 import { buildQovSnapshot } from "@/lib/analysis/qov";
@@ -118,6 +113,15 @@ export async function GET(request: Request) {
             let eventosRaros = analysis.eventosRaros;
             let overLimite35 = analysis.overLimite35;
             let overLimite45 = analysis.overLimite45;
+            let postGoalCorrection: {
+              selected: {
+                line: number;
+                layOdds: number;
+                marketId: string;
+                runnerId: string;
+                stable: boolean;
+              } | null;
+            } = { selected: null };
             let layOverLimitPressure: Array<
               LayOverLimitPressureSnapshot & {
                 mexchangeUrl?: string;
@@ -125,11 +129,6 @@ export async function GET(request: Request) {
                 eventName?: string;
               }
             > = [];
-            let lay1x1: (Lay1x1Snapshot & {
-              mexchangeUrl?: string;
-              eventId?: string;
-              eventName?: string;
-            }) | null = null;
             const teamFormPromise = analyzeTeamForm({
               home: analysis.home,
               away: analysis.away,
@@ -336,6 +335,35 @@ export async function GET(request: Request) {
               overLimite35 = await rebuildOver(3.5);
               overLimite45 = await rebuildOver(4.5);
 
+              // O aparelho confirma a mudanca de placar em dois polls e espera
+              // 30 s. O feed apenas informa a unica linha elegivel: sempre dois
+              // gols inteiros acima do placar atual (1 gol -> Over 3.5).
+              const postGoalLine = totalGoals == null ? null : totalGoals + 2.5;
+              const postGoalMarket =
+                postGoalLine === 3.5
+                  ? overLimite35
+                  : postGoalLine === 4.5
+                    ? overLimite45
+                    : null;
+              if (postGoalLine != null && postGoalMarket) {
+                const layOdds = Number(postGoalMarket.layOdds ?? 0);
+                const marketId = String(postGoalMarket.marketId ?? "");
+                const runnerId = String(postGoalMarket.runnerId ?? "");
+                postGoalCorrection = {
+                  selected: {
+                    line: postGoalLine,
+                    layOdds,
+                    marketId,
+                    runnerId,
+                    stable:
+                      !postGoalMarket.settled &&
+                      layOdds > 1.01 &&
+                      Boolean(marketId) &&
+                      Boolean(runnerId),
+                  },
+                };
+              }
+
               const lolpPressure = derivePressureFromIntel({
                 extras: fotmobIntel?.extras,
                 momentum: fotmobIntel?.pressure?.points,
@@ -377,34 +405,6 @@ export async function GET(request: Request) {
                   };
                 }),
               );
-
-              // Lay 1x1: favorito abre 1x0, mantém pressão, entra no 2º tempo
-              try {
-                const mkt1x1 = extractLay1x1Market(event);
-                const snap1x1 = buildLay1x1Snapshot({
-                  layOdds: mkt1x1.layOdds,
-                  backOdds: mkt1x1.backOdds,
-                  layLiquidity: mkt1x1.layLiquidity,
-                  marketId: mkt1x1.marketId,
-                  runnerId: mkt1x1.runnerId,
-                  homeScore: hasLiveScore ? liveSnap.homeScore : null,
-                  awayScore: hasLiveScore ? liveSnap.awayScore : null,
-                  minute: liveSnap.minute,
-                  favoritePressureBias:
-                    lolpPressure.recentBias ?? favoritePressureBias,
-                  matchOdds: analysis.matchOdds,
-                });
-                lay1x1 = {
-                  ...snap1x1,
-                  eventId: analysis.eventId,
-                  eventName: analysis.eventName,
-                  mexchangeUrl: mkt1x1.marketId
-                    ? mexchangeEventUrl(event.id, mkt1x1.marketId)
-                    : undefined,
-                };
-              } catch {
-                // mantém lay1x1 null
-              }
 
               // Lay 3x3 / QOV / Over: sem ENTRAR se amistoso ou dados ruins.
               if (!indicationGate.ok) {
@@ -606,17 +606,6 @@ export async function GET(request: Request) {
               });
             }
 
-            if (lay1x1?.entryReady && !lay1x1.settled) {
-              alerts.push({
-                id: `${analysis.eventId}-lay-1x1-entry`,
-                severity: "entry" as const,
-                title: "ENTRADA LAY · 1x1",
-                message: `${analysis.eventName}: ${lay1x1.summary}`,
-                at: new Date().toISOString(),
-                strategy: "lay-1x1",
-              });
-            }
-
             return {
               ...confirmation,
               live: correctedLive,
@@ -644,14 +633,13 @@ export async function GET(request: Request) {
                 overLimite35,
                 overLimite45,
                 layOverLimitPressure,
-                lay1x1,
               },
               qovLayUnderdog,
               eventosRaros,
               overLimite35,
               overLimite45,
+              postGoalCorrection,
               layOverLimitPressure,
-              lay1x1,
             };
           } catch {
             // Evento live sem mercado exchange acessível — ainda lista placar
